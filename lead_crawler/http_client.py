@@ -255,9 +255,13 @@ class HttpClient:
             if status_code in (429, 503):
                 wait_seconds = self._retry_after_seconds(response, 60 * attempt)
 
-                # Chế độ không chờ: tạm bỏ qua host đến hết thời gian bị yêu cầu chờ, đồng thời giảm tốc host đó.
+                # Chế độ không chờ: tạm bỏ qua host đến hết thời gian bị yêu cầu chờ.
+                # Site nói rõ thời gian chờ (Retry-After, vd. VietQR cấp lượt theo khung 10 phút) thì chờ đúng
+                # thời gian đó là đủ, hết thời gian là dùng tiếp được lượt mới; không nói rõ thì giảm tốc host đó.
                 if not wait_if_rate_limited:
-                    self._slow_down(host)
+                    if not response.headers.get("Retry-After", "").isdigit():
+                        self._slow_down(host)
+
                     self.cooldown_until[host] = time.monotonic() + wait_seconds
                     resume_at = datetime.now() + timedelta(seconds=wait_seconds)
                     logger.warning(

@@ -30,9 +30,16 @@ class VietQrSource(EnrichmentSource):
         http_client: HttpClient,
         delay_seconds: float,
         wait_if_rate_limited: bool,
+        overwrite_existing: bool = False,
     ):
+        """
+        overwrite_existing=True dùng khi tra bù (giai đoạn 2): công ty đã được các nguồn chạy sau điền
+        trạng thái / tên tiếng Anh / tên viết tắt, nay ghi đè bằng dữ liệu Cục Thuế để kết quả giống hệt
+        lúc VietQR được tra ngay từ đầu (khi đó VietQR chạy trước nên được ưu tiên).
+        """
         self.http_client = http_client
         self.wait_if_rate_limited = wait_if_rate_limited
+        self.overwrite_existing = overwrite_existing
         http_client.set_host_delay(
             API_HOST,
             delay_seconds,
@@ -70,10 +77,27 @@ class VietQrSource(EnrichmentSource):
         if legal_name:
             company.legal_name = legal_name
 
-        company.set_if_empty("international_name", clean_text(data.get("internationalName")))
-        company.set_if_empty("short_name", clean_text(data.get("shortName")))
+        self._assign(company, "international_name", clean_text(data.get("internationalName")))
+        self._assign(company, "short_name", clean_text(data.get("shortName")))
+        self._assign(company, "tax_status", clean_text(data.get("status")))
+        # Địa chỉ đăng ký thường đã có từ trang danh sách (chạy trước VietQR), nên chỉ điền khi còn trống.
         company.set_if_empty("registered_address", clean_text(data.get("address")))
-        company.set_if_empty("tax_status", clean_text(data.get("status")))
         company.add_source(self.name)
 
         return []
+
+    def _assign(
+        self,
+        company: Company,
+        attribute_name: str,
+        value: str,
+    ) -> None:
+        """
+        Điền giá trị từ Cục Thuế: ghi đè khi tra bù, còn bình thường chỉ điền khi trường đang trống.
+        """
+        if self.overwrite_existing and value:
+            setattr(company, attribute_name, value)
+
+            return
+
+        company.set_if_empty(attribute_name, value)

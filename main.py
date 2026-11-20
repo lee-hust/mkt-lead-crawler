@@ -11,6 +11,7 @@ Dòng lệnh:
     python main.py --directory-pages 100            # đọc tối đa 100 trang địa bàn mỗi tỉnh
     python main.py --input danh_sach.csv --sources  # chỉ làm giàu danh sách có sẵn, không tự tìm công ty
     python main.py --no-website --no-registry       # chạy nhanh, bớt nguồn bổ sung
+    python main.py --vietqr-backfill                # chỉ tra bù VietQR cho companies.csv (giai đoạn 2)
 """
 
 import argparse
@@ -24,6 +25,7 @@ from typing import Optional, TextIO
 
 import config
 from lead_crawler.pipeline import ALL_DISCOVERY_SOURCES, Settings, run_crawl
+from lead_crawler.vietqr_backfill import run_vietqr_backfill
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
@@ -51,6 +53,16 @@ def parse_args() -> argparse.Namespace:
     argument_parser.add_argument("--max-companies", type=int, help="Dừng sau N doanh nghiệp")
     argument_parser.add_argument("--vietqr", action="store_true", help="Bật tra MST qua VietQR (trạng thái hoạt động, tên pháp lý)")
     argument_parser.add_argument("--no-vietqr", action="store_true", help="Tắt tra MST qua VietQR")
+    argument_parser.add_argument(
+        "--vietqr-backfill",
+        action="store_true",
+        help="Chỉ chạy giai đoạn 2: tra bù VietQR cho công ty còn thiếu trong companies.csv, không cào thêm",
+    )
+    argument_parser.add_argument(
+        "--no-vietqr-backfill",
+        action="store_true",
+        help="Cào xong thì dừng, không tự tra bù VietQR (giai đoạn 2)",
+    )
     argument_parser.add_argument("--no-directory-detail", action="store_true", help="Không đọc trang chi tiết doanhnghiep.me")
     argument_parser.add_argument("--no-registry", action="store_true", help="Không tra tratencongty.com (người đại diện pháp luật)")
     argument_parser.add_argument("--no-website", action="store_true", help="Không đọc website công ty")
@@ -190,16 +202,25 @@ def main() -> int:
 
         return 2
 
+    run_backfill = settings.use_vietqr_tax_lookup and (
+        arguments.vietqr_backfill or (config.VIETQR_BACKFILL_AFTER_CRAWL and not arguments.no_vietqr_backfill)
+    )
     try:
-        written_count = run_crawl(settings)
+        if not arguments.vietqr_backfill:
+            written_count = run_crawl(settings)
+            logger.info("Xong giai đoạn 1. Ghi mới %d doanh nghiệp.", written_count)
+
+        if run_backfill:
+            run_vietqr_backfill(settings)
+        elif arguments.vietqr_backfill:
+            logger.warning("VietQR đang tắt (USE_VIETQR_TAX_LOOKUP = False hoặc --no-vietqr), không tra bù.")
     except KeyboardInterrupt:
         logger.warning("Đã dừng. Chạy lại để tiếp tục từ chỗ dừng.")
 
         return 130
 
     logger.info(
-        "Xong. Ghi mới %d doanh nghiệp. Kết quả: %s và %s",
-        written_count,
+        "Xong. Kết quả: %s và %s",
         settings.output_dir / "companies.csv",
         settings.output_dir / "contacts.csv",
     )

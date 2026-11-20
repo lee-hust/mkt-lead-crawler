@@ -115,11 +115,16 @@ KEYWORDS: list[str] = []
 # VietQR (Cục Thuế): tên pháp lý chuẩn, tên tiếng Anh, địa chỉ đăng ký, trạng thái hoạt động (đang hoạt động / giải thể).
 # Khi VietQR đã cho trạng thái, tool bỏ qua tratencongty cho công ty đó (đỡ 2 request x 3 giây).
 USE_VIETQR_TAX_LOOKUP = True
-# API miễn phí hay báo quá tải (429, bắt chờ vài phút).
-#   True : chờ đúng thời gian VietQR yêu cầu rồi tra tiếp -> công ty nào cũng có dữ liệu VietQR, nhưng cả tool dừng
-#          trong lúc chờ (hợp với chạy trên server, không vội).
-#   False: tạm bỏ qua VietQR trong lúc bị giới hạn, các nguồn khác vẫn chạy -> nhanh hơn, một số công ty thiếu dữ liệu VietQR.
-VIETQR_WAIT_IF_RATE_LIMITED = True
+# API miễn phí chỉ cho ~25 lượt / 10 phút, hết lượt thì báo quá tải (429, bắt chờ vài phút).
+# Mặc định chạy 2 giai đoạn:
+#   Giai đoạn 1 (VIETQR_WAIT_IF_RATE_LIMITED = False): cào mọi nguồn, VietQR còn lượt thì tra, hết lượt thì bỏ qua
+#               cho nhanh -> MKT sớm có SĐT, người đại diện... của mọi công ty.
+#   Giai đoạn 2 (VIETQR_BACKFILL_AFTER_CRAWL = True): cào xong thì tự tra bù VietQR cho công ty còn thiếu,
+#               chờ đúng thời gian VietQR yêu cầu, cập nhật thẳng vào companies.csv.
+#               Chạy riêng giai đoạn 2: python main.py --vietqr-backfill
+# Muốn chạy 1 giai đoạn như cũ (tra VietQR xong mới làm tiếp, chậm hơn): đặt VIETQR_WAIT_IF_RATE_LIMITED = True.
+VIETQR_WAIT_IF_RATE_LIMITED = False
+VIETQR_BACKFILL_AFTER_CRAWL = True
 DOANHNGHIEP_ME_FETCH_DETAIL = True  # trang chi tiết doanhnghiep.me: người đại diện, tên viết tắt, ngành nghề đăng ký
 # tratencongty.com: TRẠNG THÁI HOẠT ĐỘNG (thay VietQR, không bị giới hạn lượt), người đại diện, loại hình,
 # ngày cấp phép, tên giao dịch, ngành nghề VSIC. Tra cả công ty đã đủ thông tin từ doanhnghiep.me nếu còn thiếu

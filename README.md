@@ -19,7 +19,7 @@ Thu thập thông tin doanh nghiệp từ nhiều nguồn công khai. Mặc đ�
 |---|---|---|
 | **File đầu vào** (`input_template.csv`) | Danh sách MKT có sẵn | Tên, MST, website, email… do MKT cung cấp |
 | **doanhnghiep.me** | Tìm công ty theo địa bàn: tỉnh → quận/huyện → phường/xã (Hà Nội khoảng 580 trang, ~11.000 công ty); bổ sung chi tiết | **Tên, MST, SĐT, địa chỉ, ngành nghề chính, ngày thành lập, phường/quận, người đại diện**, tên viết tắt, ngành nghề đăng ký |
-| **VietQR** (dữ liệu Cục Thuế) | Tra theo MST | Tên pháp lý chuẩn, tên tiếng Anh, tên viết tắt, địa chỉ đăng ký thuế, **trạng thái hoạt động**. API miễn phí hay báo quá tải; mặc định tool chờ đúng thời gian yêu cầu rồi tra tiếp (`VIETQR_WAIT_IF_RATE_LIMITED`) |
+| **VietQR** (dữ liệu Cục Thuế) | Tra theo MST | Tên pháp lý chuẩn, tên tiếng Anh, tên viết tắt, địa chỉ đăng ký thuế, **trạng thái hoạt động**. API miễn phí chỉ cho khoảng 25 lượt / 10 phút, nên tool chạy 2 giai đoạn (xem mục [Tốc độ](#tốc-độ)) |
 | **tratencongty.com** | Tìm theo tỉnh; tra theo MST/tên | **Trạng thái hoạt động** (khi VietQR không có), **người đại diện pháp luật**, loại hình DN, ngày cấp phép, ngày hoạt động, tên giao dịch, ngành nghề đăng ký (mã VSIC). Công ty mới thành lập vài ngày có thể chưa có trên site này |
 | **Website của chính công ty** | Bổ sung (khi có website hoặc email tên miền riêng) | Email, SĐT, **lãnh đạo (họ tên + chức vụ)**, MST ở chân trang, Facebook/LinkedIn/YouTube/TikTok/Zalo, mô tả website, nền tảng web, có bản tiếng Anh, có trang tuyển dụng |
 
@@ -108,7 +108,19 @@ python main.py --no-registry --no-website
 
 ## Tốc độ
 
-Mỗi site có khoảng nghỉ riêng: doanhnghiep.me và VietQR 2 giây, tratencongty 3 giây, website 1,5 giây. Khi bị báo quá tải (429): VietQR mặc định chờ đúng thời gian yêu cầu rồi tra tiếp (cả tool dừng trong lúc chờ, hợp với chạy trên server); đặt `VIETQR_WAIT_IF_RATE_LIMITED = False` để tạm bỏ qua VietQR và chạy nhanh hơn. Các nguồn bổ sung khác thì tạm bỏ qua đến hết thời gian bị yêu cầu chờ. Mỗi công ty tốn khoảng 2–8 giây tùy số nguồn có dữ liệu, tức khoảng **500–1.500 công ty/giờ**. Có thể để máy chạy qua đêm. Muốn nhanh hơn thì tắt bớt nguồn bổ sung (`--no-registry`, `--no-website`, `--no-directory-detail`). Không nên giảm khoảng nghỉ, vì dễ bị chặn.
+Mỗi site có khoảng nghỉ riêng: doanhnghiep.me và VietQR 2 giây, tratencongty 3 giây, website 1,5 giây. Khi bị báo quá tải (429), nguồn bổ sung được tạm bỏ qua đến hết thời gian site yêu cầu chờ, các nguồn khác vẫn chạy. Mỗi công ty tốn khoảng 2–8 giây tùy số nguồn có dữ liệu, tức khoảng **500–1.500 công ty/giờ**. Có thể để máy chạy qua đêm. Muốn nhanh hơn thì tắt bớt nguồn bổ sung (`--no-registry`, `--no-website`, `--no-directory-detail`). Không nên giảm khoảng nghỉ, vì dễ bị chặn.
+
+**VietQR chạy 2 giai đoạn** (mặc định). VietQR miễn phí chỉ cho khoảng 25 lượt / 10 phút, tức khoảng 150 công ty/giờ, chậm hơn hẳn các nguồn khác:
+
+| | Làm gì | Cấu hình |
+|---|---|---|
+| **Giai đoạn 1** | Cào mọi nguồn. VietQR còn lượt thì tra, hết lượt thì bỏ qua công ty đó cho nhanh (trạng thái hoạt động lấy tạm từ tratencongty). MKT sớm có SĐT, người đại diện... của mọi công ty | `VIETQR_WAIT_IF_RATE_LIMITED = False` |
+| **Giai đoạn 2** | Cào xong, tool tự tra bù VietQR cho công ty có MST mà chưa có "VietQR (Cục Thuế)" trong cột "Nguồn dữ liệu". Chờ đúng thời gian VietQR yêu cầu, cập nhật thẳng vào `companies.csv` (lưu khoảng 10 phút/lần) | `VIETQR_BACKFILL_AFTER_CRAWL = True` |
+
+- Chạy riêng giai đoạn 2 (vd. sau khi dừng giữa chừng): `python main.py --vietqr-backfill`. Dừng lúc nào cũng được, chạy lại sẽ tra tiếp phần còn thiếu.
+- Cào xong thì dừng, không tra bù: `--no-vietqr-backfill`.
+- Chạy 1 giai đoạn như cũ (tra VietQR xong mới làm tiếp, cả tool đứng chờ khi hết lượt): `VIETQR_WAIT_IF_RATE_LIMITED = True`.
+- Trong lúc giai đoạn 2 chạy, tool đang giữ file nên không chạy giai đoạn 1 song song được (tool tự thoát với mã 2).
 
 ## Dừng và chạy tiếp
 
