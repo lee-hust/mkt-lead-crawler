@@ -1,0 +1,12 @@
+# Dữ liệu cào về (có tên, SĐT, email) — không đưa lên git
+output/
+output_server/
+*.log
+*.tar.gz
+*.tgz
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+.idea/

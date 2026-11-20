@@ -1,0 +1,13 @@
+.idea/
+.venv/
+venv/
+output/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+README.md
+input_template.csv
+chay_tren_server.sh
+Dockerfile
+.dockerignore
