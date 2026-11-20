@@ -22,11 +22,13 @@ from lead_crawler.html_soup import make_soup
 
 from lead_crawler.http_client import HttpClient
 from lead_crawler.models import CONTACT_TYPE_PERSON, Company, ContactPerson
+from lead_crawler.provinces import CENTRAL_CITY_SLUGS, find_province_slug
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.text_utils import (
     LEGAL_NAME_MARKERS,
     clean_text,
     company_name_tokens,
+    contains_city_key,
     is_same_company_name,
     to_ascii_key,
 )
@@ -41,14 +43,6 @@ LEGAL_REPRESENTATIVE_POSITION = "Người đại diện pháp luật"
 MATCHED_BY_REGISTERED_ADDRESS = "Địa chỉ đăng ký"
 MAX_INDUSTRIES = 100
 
-# Đường dẫn trang danh sách theo tỉnh/thành trên tratencongty.com
-PROVINCE_PATHS = {
-    "ha-noi": "/thanh-pho-ha-noi/",
-    "ho-chi-minh": "/thanh-pho-ho-chi-minh/",
-    "da-nang": "/thanh-pho-da-nang/",
-    "hai-phong": "/thanh-pho-hai-phong/",
-    "can-tho": "/thanh-pho-can-tho/",
-}
 
 
 class TraTenCongTySource(EnrichmentSource):
@@ -172,7 +166,7 @@ class TraTenCongTySource(EnrichmentSource):
         Các trang xếp công ty mới đăng ký lên trước nên mỗi lần chạy lại sẽ thấy công ty mới.
         """
         for city_name, city_keys in cities.items():
-            province_path = next((path for key, path in PROVINCE_PATHS.items() if key in city_keys), None)
+            province_path = province_list_path(city_keys)
             if province_path is None:
                 logger.warning("%s: chưa có đường dẫn danh sách cho %s", self.name, city_name)
                 continue
@@ -321,6 +315,19 @@ def filter_results_by_name(
     return matching_results
 
 
+def province_list_path(city_keys: list[str]) -> Optional[str]:
+    """
+    Đường dẫn trang danh sách công ty của tỉnh/thành, ví dụ /thanh-pho-ha-noi/, /tinh-ha-nam/.
+    """
+    province_slug = find_province_slug(city_keys)
+    if province_slug is None:
+        return None
+
+    prefix = "thanh-pho" if province_slug in CENTRAL_CITY_SLUGS else "tinh"
+
+    return f"/{prefix}-{province_slug}/"
+
+
 def filter_by_city(
     results: list[dict],
     city_keys: list[str],
@@ -331,7 +338,7 @@ def filter_by_city(
     if not city_keys:
         return results
 
-    return [result for result in results if any(key in to_ascii_key(result["address"]) for key in city_keys)]
+    return [result for result in results if contains_city_key(result["address"], city_keys)]
 
 
 def apply_detail_page(

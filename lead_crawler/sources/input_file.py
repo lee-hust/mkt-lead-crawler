@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Iterator
 
 from lead_crawler.models import Company
-from lead_crawler.text_utils import clean_text, split_brand_and_legal_name, to_ascii_key
+from lead_crawler.text_utils import clean_text, find_city_in_text, split_brand_and_legal_name, to_ascii_key
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +99,6 @@ def guess_city(
     """
     Gán khu vực theo cột Tỉnh/TP hoặc địa chỉ; không xác định được thì để nguyên giá trị đã nhập.
     """
-    location_key = to_ascii_key(f"{company.city} {company.address}")
-    for city_name, city_keys in cities.items():
-        if any(key in location_key for key in city_keys):
-            return city_name
+    found_city = find_city_in_text(company.city, cities) or find_city_in_text(company.address, cities)
 
-    return company.city
+    return found_city or company.city

@@ -77,6 +77,41 @@ def to_ascii_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
 
 
+def contains_city_key(
+    text: str,
+    city_keys: list[str],
+) -> bool:
+    """
+    Chuỗi (thường là địa chỉ) có chứa trọn một từ khóa khu vực không.
+    So theo nguyên cụm từ để "an-giang" không khớp nhầm "Tân Giang", "ha-nam" không khớp nhầm "Pha Nam".
+    """
+    location_key = f"-{to_ascii_key(text)}-"
+
+    return any(f"-{city_key}-" in location_key for city_key in city_keys)
+
+
+def find_city_in_text(
+    text: str,
+    cities: dict[str, list[str]],
+) -> str:
+    """
+    Tìm khu vực (config.ALL_CITIES) nhắc tới trong chuỗi; không thấy thì trả về "".
+    Tỉnh/thành thường đứng cuối địa chỉ, nên khi có nhiều tên (vd. "đường Hà Nội, TP Hồ Chí Minh")
+    thì lấy tên xuất hiện sau cùng.
+    """
+    location_key = f"-{to_ascii_key(text)}-"
+    found_city = ""
+    found_position = -1
+    for city_name, city_keys in cities.items():
+        for city_key in city_keys:
+            position = location_key.rfind(f"-{city_key}-")
+            if position > found_position:
+                found_city = city_name
+                found_position = position
+
+    return found_city
+
+
 def clean_text(text) -> str:
     """
     Gộp khoảng trắng thừa và bỏ khoảng trắng ở hai đầu.

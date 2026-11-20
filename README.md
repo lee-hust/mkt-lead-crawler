@@ -1,6 +1,6 @@
 # MKT Lead Crawler
 
-Thu thập thông tin doanh nghiệp ở **Hà Nội, TP. Hồ Chí Minh, Đà Nẵng** từ nhiều nguồn công khai. Tool gộp dữ liệu theo mã số thuế rồi xuất ra **CSV** (chỉ dữ liệu dạng chữ).
+Thu thập thông tin doanh nghiệp từ nhiều nguồn công khai. Mặc định quét **Hà Nội, TP. Hồ Chí Minh, Đà Nẵng**; chọn thêm được bất kỳ tỉnh nào trong **63 tỉnh/thành** (xem mục [Chọn tỉnh/thành](#chọn-tỉnhthành)). Tool gộp dữ liệu theo mã số thuế rồi xuất ra **CSV** (chỉ dữ liệu dạng chữ).
 
 ## Luồng xử lý
 
@@ -57,6 +57,26 @@ Chỉ Hà Nội, 50 công ty:
 ```bash
 python main.py --cities "Hà Nội" --max-companies 50
 ```
+
+### Chọn tỉnh/thành
+
+Sửa `SELECTED_CITIES` trong `config.py`, chép đúng tên (có dấu) từ `ALL_CITIES` ngay bên dưới:
+
+```python
+SELECTED_CITIES = ["Hà Nội", "TP. Hồ Chí Minh", "Đà Nẵng", "Hải Phòng", "Bình Dương"]
+SELECTED_CITIES = ["all"]   # cả 63 tỉnh/thành
+```
+
+Hoặc truyền tham số (ghi đè `config.py`):
+
+```bash
+python main.py --cities "Hải Phòng" "Bình Dương"
+python main.py --cities all
+```
+
+- doanhnghiep.me và tratencongty.com vẫn chia theo **63 tỉnh/thành cũ** (trước sáp nhập còn 34 tỉnh/thành từ 7/2025), nên danh sách vẫn có Bình Dương, Hà Nam, Quảng Nam... Cột "Khu vực quét" ghi theo tên cũ này; địa chỉ của công ty đã cập nhật sau sáp nhập có thể ghi tên tỉnh mới.
+- Tool quét lần lượt từng tỉnh theo thứ tự trong danh sách, xong tỉnh này mới sang tỉnh sau. Muốn có ngay dữ liệu tỉnh nào thì đặt tỉnh đó lên đầu.
+- Thêm tỉnh khi chạy lại không làm mất dữ liệu cũ: công ty đã có trong `companies.csv` được bỏ qua.
 
 Lọc theo ngành nghề (so với tên, ngành nghề, lĩnh vực đoán; không phân biệt dấu):
 

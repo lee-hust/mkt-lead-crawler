@@ -5,6 +5,8 @@ PyCharm: mở main.py -> bấm Run (dùng cấu hình trong config.py).
 Dòng lệnh:
     python main.py                                  # chạy theo config.py
     python main.py --cities "Hà Nội" --max-companies 50
+    python main.py --cities "Hải Phòng" "Bình Dương"    # tỉnh khác (tên trong config.ALL_CITIES)
+    python main.py --cities all                     # cả 63 tỉnh/thành
     python main.py --keywords "xây dựng" "lập trình"   # lọc theo ngành nghề
     python main.py --directory-pages 100            # đọc tối đa 100 trang địa bàn mỗi tỉnh
     python main.py --input danh_sach.csv --sources  # chỉ làm giàu danh sách có sẵn, không tự tìm công ty
@@ -31,7 +33,11 @@ def parse_args() -> argparse.Namespace:
     Đọc tham số dòng lệnh; tham số nào không truyền thì lấy theo config.py.
     """
     argument_parser = argparse.ArgumentParser(description="Thu thập thông tin doanh nghiệp cho MKT")
-    argument_parser.add_argument("--cities", nargs="+", help='Khu vực trong config.CITIES, ví dụ: "Hà Nội" "Đà Nẵng"')
+    argument_parser.add_argument(
+        "--cities",
+        nargs="+",
+        help='Khu vực trong config.ALL_CITIES, ví dụ: "Hà Nội" "Hải Phòng"; "all" = cả 63 tỉnh/thành',
+    )
     argument_parser.add_argument("--input", help="File CSV danh sách công ty có sẵn (xem input_template.csv)")
     argument_parser.add_argument(
         "--sources",
@@ -57,13 +63,15 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
     """
     Gộp config.py với tham số dòng lệnh.
     """
-    cities = config.CITIES
-    if arguments.cities:
-        unknown_cities = [city for city in arguments.cities if city not in config.CITIES]
-        if unknown_cities:
-            sys.exit(f"Khu vực không có trong config.CITIES: {unknown_cities}")
+    selected_cities = arguments.cities or config.SELECTED_CITIES
+    if list(selected_cities) == ["all"]:
+        selected_cities = list(config.ALL_CITIES)
 
-        cities = {city: config.CITIES[city] for city in arguments.cities}
+    unknown_cities = [city for city in selected_cities if city not in config.ALL_CITIES]
+    if unknown_cities:
+        sys.exit(f"Khu vực không có trong config.ALL_CITIES (kiểm tra lại chính tả, có dấu): {unknown_cities}")
+
+    cities = {city: config.ALL_CITIES[city] for city in selected_cities}
 
     output_dir = Path(arguments.output or config.OUTPUT_DIR)
     if not output_dir.is_absolute():

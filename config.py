@@ -3,11 +3,80 @@ CẤU HÌNH MẶC ĐỊNH — sửa ở đây rồi bấm Run main.py trong PyCh
 Mọi giá trị đều có thể ghi đè bằng tham số dòng lệnh (xem: python main.py --help).
 """
 
-# Khu vực cần quét: tên hiển thị -> các từ khóa không dấu để nhận diện tỉnh/thành trong địa chỉ.
-CITIES = {
+# >>> KHU VỰC CẦN QUÉT: chép tên từ ALL_CITIES bên dưới vào đây, quét theo đúng thứ tự trong danh sách.
+# Ví dụ thêm Hải Phòng, Bình Dương: ["Hà Nội", "TP. Hồ Chí Minh", "Đà Nẵng", "Hải Phòng", "Bình Dương"]
+# Quét cả nước (63 tỉnh/thành): SELECTED_CITIES = ["all"]
+SELECTED_CITIES = ["Hà Nội", "TP. Hồ Chí Minh", "Đà Nẵng"]
+
+# Toàn bộ 63 tỉnh/thành doanhnghiep.me và tratencongty.com hỗ trợ. Hai site vẫn chia theo địa giới CŨ
+# (trước khi sáp nhập còn 34 tỉnh/thành từ 7/2025), nên vẫn có Bình Dương, Hà Nam, Quảng Nam...
+# Tên hiển thị (ghi vào cột "Khu vực quét") -> từ khóa không dấu; từ khóa đầu tiên là đường dẫn trên hai site,
+# các từ khóa còn lại dùng để nhận ra tỉnh/thành trong địa chỉ. Không đổi tên hiển thị của tỉnh đã quét,
+# vì tool dùng tên này để nhận ra công ty đã ghi ở lần chạy trước.
+ALL_CITIES = {
     "Hà Nội": ["ha-noi"],
     "TP. Hồ Chí Minh": ["ho-chi-minh", "tphcm", "tp-hcm"],
     "Đà Nẵng": ["da-nang"],
+    "Hải Phòng": ["hai-phong"],
+    "Cần Thơ": ["can-tho"],
+    "An Giang": ["an-giang"],
+    "Bà Rịa - Vũng Tàu": ["ba-ria-vung-tau", "brvt"],
+    "Bắc Giang": ["bac-giang"],
+    "Bắc Kạn": ["bac-kan", "bac-can"],
+    "Bạc Liêu": ["bac-lieu"],
+    "Bắc Ninh": ["bac-ninh"],
+    "Bến Tre": ["ben-tre"],
+    "Bình Định": ["binh-dinh"],
+    "Bình Dương": ["binh-duong"],
+    "Bình Phước": ["binh-phuoc"],
+    "Bình Thuận": ["binh-thuan"],
+    "Cà Mau": ["ca-mau"],
+    "Cao Bằng": ["cao-bang"],
+    "Đắk Lắk": ["dak-lak"],
+    "Đắk Nông": ["dak-nong"],
+    "Điện Biên": ["dien-bien"],
+    "Đồng Nai": ["dong-nai"],
+    "Đồng Tháp": ["dong-thap"],
+    "Gia Lai": ["gia-lai"],
+    "Hà Giang": ["ha-giang"],
+    "Hà Nam": ["ha-nam"],
+    "Hà Tĩnh": ["ha-tinh"],
+    "Hải Dương": ["hai-duong"],
+    "Hậu Giang": ["hau-giang"],
+    "Hòa Bình": ["hoa-binh"],
+    "Hưng Yên": ["hung-yen"],
+    "Khánh Hòa": ["khanh-hoa"],
+    "Kiên Giang": ["kien-giang"],
+    "Kon Tum": ["kon-tum"],
+    "Lai Châu": ["lai-chau"],
+    "Lâm Đồng": ["lam-dong"],
+    "Lạng Sơn": ["lang-son"],
+    "Lào Cai": ["lao-cai"],
+    "Long An": ["long-an"],
+    "Nam Định": ["nam-dinh"],
+    "Nghệ An": ["nghe-an"],
+    "Ninh Bình": ["ninh-binh"],
+    "Ninh Thuận": ["ninh-thuan"],
+    "Phú Thọ": ["phu-tho"],
+    "Phú Yên": ["phu-yen"],
+    "Quảng Bình": ["quang-binh"],
+    "Quảng Nam": ["quang-nam"],
+    "Quảng Ngãi": ["quang-ngai"],
+    "Quảng Ninh": ["quang-ninh"],
+    "Quảng Trị": ["quang-tri"],
+    "Sóc Trăng": ["soc-trang"],
+    "Sơn La": ["son-la"],
+    "Tây Ninh": ["tay-ninh"],
+    "Thái Bình": ["thai-binh"],
+    "Thái Nguyên": ["thai-nguyen"],
+    "Thanh Hóa": ["thanh-hoa"],
+    "Thừa Thiên Huế": ["thua-thien-hue", "thanh-pho-hue", "tp-hue"],
+    "Tiền Giang": ["tien-giang"],
+    "Trà Vinh": ["tra-vinh"],
+    "Tuyên Quang": ["tuyen-quang"],
+    "Vĩnh Long": ["vinh-long"],
+    "Vĩnh Phúc": ["vinh-phuc"],
+    "Yên Bái": ["yen-bai"],
 }
 
 # ============================================================ NGUỒN TÌM CÔNG TY (đầu vào)

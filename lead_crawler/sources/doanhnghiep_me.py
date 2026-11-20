@@ -1,5 +1,5 @@
 """
-Nguồn doanhnghiep.me: cơ sở dữ liệu doanh nghiệp theo tỉnh/thành (Hà Nội ~446 nghìn,
+Nguồn doanhnghiep.me: cơ sở dữ liệu doanh nghiệp theo 63 tỉnh/thành (Hà Nội ~446 nghìn,
 TP.HCM ~833 nghìn, Đà Nẵng ~87 nghìn doanh nghiệp), công ty mới thành lập xếp trước.
 
 - Tìm công ty (iter_companies): phân trang của site bị lỗi (trang 2, 3... luôn hiện lại trang 1),
@@ -21,6 +21,7 @@ from typing import Iterator, Optional
 from lead_crawler.html_soup import make_soup
 from lead_crawler.http_client import HttpClient
 from lead_crawler.models import CONTACT_TYPE_PERSON, Company, ContactPerson
+from lead_crawler.provinces import find_province_slug
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.text_utils import clean_text, normalize_phone, to_ascii_key, unique_keep_order
 
@@ -33,14 +34,6 @@ TAX_CODE_SOURCE_DOANHNGHIEP_ME = "doanhnghiep.me"
 LEGAL_REPRESENTATIVE_POSITION = "Người đại diện pháp luật"
 MAX_INDUSTRIES = 100
 
-# Từ khóa khu vực (config.CITIES) -> đường dẫn tỉnh/thành trên doanhnghiep.me
-PROVINCE_SLUGS = {
-    "ha-noi": "ha-noi",
-    "ho-chi-minh": "ho-chi-minh",
-    "da-nang": "da-nang",
-    "hai-phong": "hai-phong",
-    "can-tho": "can-tho",
-}
 NO_INFORMATION = "chua-co-thong-tin"
 
 
@@ -82,7 +75,7 @@ class DoanhNghiepMeSource(EnrichmentSource):
         tối đa max_pages trang mỗi tỉnh (None = đi hết). Công ty trùng giữa các trang chỉ trả về một lần.
         """
         for city_name, city_keys in cities.items():
-            province_slug = next((slug for key, slug in PROVINCE_SLUGS.items() if key in city_keys), None)
+            province_slug = find_province_slug(city_keys)
             if province_slug is None:
                 logger.warning("%s: chưa có đường dẫn danh sách cho %s", self.name, city_name)
                 continue
