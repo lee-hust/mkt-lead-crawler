@@ -1,14 +1,6 @@
 """
-Nguồn đăng ký doanh nghiệp trên tratencongty.com, dùng theo 2 cách:
-
-1. Nguồn bổ sung (enrich): tra theo MST (hoặc theo tên pháp lý nếu chưa có MST) để lấy
-   người đại diện pháp luật, loại hình, ngày cấp phép, ngày hoạt động, trạng thái, ngành nghề VSIC.
-2. Nguồn tìm công ty (iter_companies): duyệt danh sách công ty theo tỉnh/thành
-   (mới đăng ký xếp trước), mỗi trang 50 công ty.
-
-robots.txt cho phép mọi bot; site không có điều khoản cấm thu thập.
-MST và SĐT trên site hiển thị bằng ảnh (site cố ý ẩn) nên không đọc; chỉ lấy dữ liệu dạng chữ.
-Kết quả tìm kiếm đôi khi trả nhầm công ty (nhất là công ty mới), nên luôn đối chiếu tên.
+tratencongty.com: tra theo MST / tên (người đại diện, loại hình, trạng thái, ngành nghề) và tìm công ty theo tỉnh.
+Chỉ lấy dữ liệu dạng chữ (MST, SĐT hiển thị bằng ảnh); luôn đối chiếu tên vì kết quả đôi khi nhầm.
 """
 
 import itertools
@@ -85,8 +77,7 @@ class TraTenCongTySource(EnrichmentSource):
         if self.is_blocked():
             return []
 
-        # Nguồn trước đã có đủ người đại diện + ngành nghề + trạng thái hoạt động: bỏ qua để đỡ 2 request.
-        # Khi tắt VietQR, trạng thái chỉ lấy được ở đây nên công ty nào cũng được tra.
+        # Đã đủ người đại diện + ngành nghề + trạng thái thì bỏ qua cho đỡ 2 request.
         if company.legal_representative and company.registered_industries and company.tax_status:
             return []
 
@@ -162,8 +153,7 @@ class TraTenCongTySource(EnrichmentSource):
         max_pages: Optional[int],
     ) -> Iterator[Company]:
         """
-        Duyệt danh sách công ty theo tỉnh/thành, trả về công ty (tên, người đại diện, địa chỉ).
-        Các trang xếp công ty mới đăng ký lên trước nên mỗi lần chạy lại sẽ thấy công ty mới.
+        Duyệt danh sách công ty theo tỉnh (mới đăng ký xếp trước).
         """
         for city_name, city_keys in cities.items():
             province_path = province_list_path(city_keys)
@@ -264,8 +254,7 @@ def parse_labeled_lines(container) -> dict[str, str]:
 
 def parse_result_blocks(page_html: Optional[str]) -> list[dict]:
     """
-    Đọc các khối công ty (trang tìm kiếm hoặc danh sách theo tỉnh):
-    [{"name", "url", "legal_representative", "address"}].
+    Đọc các khối công ty: [{"name", "url", "legal_representative", "address"}].
     """
     if not page_html:
         return []
@@ -296,8 +285,7 @@ def filter_results_by_name(
     exact_name: bool,
 ) -> list[dict]:
     """
-    Giữ kết quả có tên khớp reference_name. exact_name=True yêu cầu trùng toàn bộ từ đặc trưng
-    (dùng khi tra theo tên, không có MST để đối chiếu).
+    Giữ kết quả khớp tên; exact_name=True yêu cầu trùng toàn bộ từ đặc trưng.
     """
     reference_tokens = company_name_tokens(reference_name)
     matching_results = []

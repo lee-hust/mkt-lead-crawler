@@ -1,18 +1,5 @@
 """
-Điểm chạy chương trình.
-
-PyCharm: mở main.py -> bấm Run (dùng cấu hình trong config.py).
-Dòng lệnh:
-    python main.py                                  # chạy theo config.py
-    python main.py --cities "Hà Nội" --max-companies 50
-    python main.py --cities "Hải Phòng" "Bình Dương"    # tỉnh khác (tên trong config.ALL_CITIES)
-    python main.py --cities all                     # cả 63 tỉnh/thành
-    python main.py --keywords "xây dựng" "lập trình"   # lọc theo ngành nghề
-    python main.py --directory-pages 100            # đọc tối đa 100 trang địa bàn mỗi tỉnh
-    python main.py --input danh_sach.csv --sources  # chỉ làm giàu danh sách có sẵn, không tự tìm công ty
-    python main.py --no-website --no-registry       # chạy nhanh, bớt nguồn bổ sung
-    python main.py --vietqr-backfill                # chỉ tra bù VietQR cho companies.csv (giai đoạn 2)
-    python main.py --vietqr-backfill --vietqr-free-proxies   # tra bù VietQR qua proxy miễn phí (swiftshadow)
+Điểm chạy chương trình. PyCharm: Run main.py (theo config.py); dòng lệnh: python main.py --help.
 """
 
 import argparse
@@ -69,6 +56,8 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Tra VietQR xoay vòng qua proxy miễn phí lấy bằng swiftshadow (xem config.VIETQR_FREE_PROXIES)",
     )
+    argument_parser.add_argument("--no-infodoanhnghiep", action="store_true", help="Không tra infodoanhnghiep.com")
+    argument_parser.add_argument("--no-doanhnghiep-biz", action="store_true", help="Không tra doanhnghiep.biz (số điện thoại)")
     argument_parser.add_argument("--no-directory-detail", action="store_true", help="Không đọc trang chi tiết doanhnghiep.me")
     argument_parser.add_argument("--no-registry", action="store_true", help="Không tra tratencongty.com (người đại diện pháp luật)")
     argument_parser.add_argument("--no-website", action="store_true", help="Không đọc website công ty")
@@ -116,6 +105,10 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
         vietqr_free_proxy_max=config.VIETQR_FREE_PROXY_MAX,
         vietqr_free_proxy_min=config.VIETQR_FREE_PROXY_MIN,
         vietqr_free_proxy_refresh_minutes=config.VIETQR_FREE_PROXY_REFRESH_MINUTES,
+        use_infodoanhnghiep=config.USE_INFODOANHNGHIEP and not arguments.no_infodoanhnghiep,
+        infodoanhnghiep_delay_seconds=config.INFODOANHNGHIEP_DELAY_SECONDS,
+        use_doanhnghiep_biz=config.USE_DOANHNGHIEP_BIZ and not arguments.no_doanhnghiep_biz,
+        doanhnghiep_biz_delay_seconds=config.DOANHNGHIEP_BIZ_DELAY_SECONDS,
         doanhnghiep_me_fetch_detail=config.DOANHNGHIEP_ME_FETCH_DETAIL and not arguments.no_directory_detail,
         use_tratencongty=config.USE_TRATENCONGTY and not arguments.no_registry,
         tratencongty_fetch_detail=config.TRATENCONGTY_FETCH_DETAIL,
@@ -156,9 +149,7 @@ def setup_logging(output_dir: Path) -> None:
 
 def acquire_run_lock(output_dir: Path) -> Optional[TextIO]:
     """
-    Khóa thư mục output để không có 2 tiến trình cùng ghi một file CSV
-    (vd. cron gọi lần mới khi lần trước chưa chạy xong). Hệ điều hành tự nhả khóa khi tiến trình kết thúc.
-    Trả về None nếu đang có tiến trình khác giữ khóa.
+    Khóa thư mục output để không có 2 tiến trình cùng ghi CSV. Trả về None nếu đang bị khóa.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     lock_file = (output_dir / ".run.lock").open("a+")
@@ -212,7 +203,7 @@ def main() -> int:
 
         return 2
 
-    run_backfill = settings.use_vietqr_tax_lookup and (
+    run_backfill = (settings.use_vietqr_tax_lookup or settings.use_infodoanhnghiep) and (
         arguments.vietqr_backfill or (config.VIETQR_BACKFILL_AFTER_CRAWL and not arguments.no_vietqr_backfill)
     )
     try:
@@ -223,7 +214,7 @@ def main() -> int:
         if run_backfill:
             run_vietqr_backfill(settings)
         elif arguments.vietqr_backfill:
-            logger.warning("VietQR đang tắt (USE_VIETQR_TAX_LOOKUP = False hoặc --no-vietqr), không tra bù.")
+            logger.warning("VietQR và infodoanhnghiep đều đang tắt, không tra bù.")
     except KeyboardInterrupt:
         logger.warning("Đã dừng. Chạy lại để tiếp tục từ chỗ dừng.")
 

@@ -1,7 +1,5 @@
 """
-Suy lĩnh vực hoạt động từ tên công ty (và ngành nghề nếu có) bằng từ khóa.
-Dùng cho công ty mới đăng ký chưa có ngành nghề trên trang nguồn. Đây là ước đoán,
-được ghi vào cột riêng "Lĩnh vực (suy từ tên)" để MKT phân nhóm nhanh.
+Đoán lĩnh vực từ tên công ty / ngành nghề bằng từ khóa (cột "Lĩnh vực (suy từ tên)").
 """
 
 from lead_crawler.text_utils import to_ascii_key
@@ -74,8 +72,7 @@ GENERIC_INDUSTRIES = {
 
 MAX_INDUSTRIES = 2
 
-# Loại hình doanh nghiệp theo cụm từ trong tên (không dấu), xét theo thứ tự:
-# đơn vị phụ thuộc (chi nhánh, VPĐD, địa điểm) trước, vì tên của chúng chứa cả "Công ty TNHH ...".
+# Loại hình theo cụm từ trong tên; xét đơn vị phụ thuộc trước vì tên của chúng chứa cả "Công ty ...".
 LEGAL_FORM_PATTERNS = [
     ("chi-nhanh", "Chi nhánh"),
     ("van-phong-dai-dien", "Văn phòng đại diện"),
@@ -111,8 +108,7 @@ def guess_industry(
     allow_generic: bool = True,
 ) -> str:
     """
-    Trả về tối đa 2 lĩnh vực đoán được, ngăn cách bằng "; " ("" nếu không đoán được).
-    allow_generic=False: chỉ nhận lĩnh vực cụ thể, bỏ qua nhóm chung chung (Thương mại, Sản xuất).
+    Tối đa 2 lĩnh vực, ngăn cách "; ". allow_generic=False: bỏ nhóm chung chung (Thương mại, Sản xuất).
     """
     name_key = "-" + to_ascii_key(text) + "-"
     industries = _matched_industries(
@@ -130,8 +126,7 @@ def guess_industry(
 
 def guess_industry_from_texts(texts: list[str]) -> str:
     """
-    Đoán từ nhiều nguồn chữ theo thứ tự ưu tiên (vd. tên công ty -> ngành chính -> ngành đăng ký đầu tiên):
-    ưu tiên lĩnh vực cụ thể ở bất kỳ nguồn nào; chỉ khi không có mới dùng nhóm chung chung.
+    Đoán theo thứ tự các đoạn chữ; lĩnh vực cụ thể trước, không có mới lấy nhóm chung chung.
     """
     for allow_generic in (False, True):
         for text in texts:

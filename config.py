@@ -1,18 +1,12 @@
 """
-CẤU HÌNH MẶC ĐỊNH — sửa ở đây rồi bấm Run main.py trong PyCharm.
-Mọi giá trị đều có thể ghi đè bằng tham số dòng lệnh (xem: python main.py --help).
+Cấu hình mặc định: sửa ở đây rồi Run main.py. Ghi đè bằng tham số dòng lệnh: python main.py --help.
 """
 
-# >>> KHU VỰC CẦN QUÉT: chép tên từ ALL_CITIES bên dưới vào đây, quét theo đúng thứ tự trong danh sách.
-# Ví dụ thêm Hải Phòng, Bình Dương: ["Hà Nội", "TP. Hồ Chí Minh", "Đà Nẵng", "Hải Phòng", "Bình Dương"]
-# Quét cả nước (63 tỉnh/thành): SELECTED_CITIES = ["all"]
+# Khu vực cần quét (tên trong ALL_CITIES, quét theo thứ tự). Cả nước: ["all"].
 SELECTED_CITIES = ["Hà Nội", "TP. Hồ Chí Minh", "Đà Nẵng"]
 
-# Toàn bộ 63 tỉnh/thành doanhnghiep.me và tratencongty.com hỗ trợ. Hai site vẫn chia theo địa giới CŨ
-# (trước khi sáp nhập còn 34 tỉnh/thành từ 7/2025), nên vẫn có Bình Dương, Hà Nam, Quảng Nam...
-# Tên hiển thị (ghi vào cột "Khu vực quét") -> từ khóa không dấu; từ khóa đầu tiên là đường dẫn trên hai site,
-# các từ khóa còn lại dùng để nhận ra tỉnh/thành trong địa chỉ. Không đổi tên hiển thị của tỉnh đã quét,
-# vì tool dùng tên này để nhận ra công ty đã ghi ở lần chạy trước.
+# 63 tỉnh/thành theo địa giới cũ (các site chưa cập nhật sáp nhập 7/2025).
+# Tên hiển thị -> từ khóa không dấu (từ khóa đầu là đường dẫn trên site). Không đổi tên hiển thị của tỉnh đã quét.
 ALL_CITIES = {
     "Hà Nội": ["ha-noi"],
     "TP. Hồ Chí Minh": ["ho-chi-minh", "tphcm", "tp-hcm"],
@@ -79,91 +73,64 @@ ALL_CITIES = {
     "Yên Bái": ["yen-bai"],
 }
 
-# ============================================================ NGUỒN TÌM CÔNG TY (đầu vào)
+# ============================================================ TÌM CÔNG TY
 
-# File CSV danh sách công ty MKT có sẵn (tên / MST / website...). Để "" nếu không dùng.
-# Mẫu: input_template.csv. Ví dụ: INPUT_FILE = "input_template.csv"
+# File CSV danh sách công ty có sẵn (mẫu: input_template.csv); "" = không dùng.
 INPUT_FILE = ""
 
-# Các nguồn tự tìm công ty, chạy theo thứ tự:
-#   "doanhnghiep_me" : doanhnghiep.me theo tỉnh — có MST, SĐT, địa chỉ, ngành nghề chính, ngày thành lập
-#                      (Hà Nội ~446 nghìn, TP.HCM ~833 nghìn, Đà Nẵng ~87 nghìn doanh nghiệp)
-#   "tratencongty"   : tratencongty.com theo tỉnh — tên, người đại diện, địa chỉ (không có MST/SĐT)
-# Cả hai đều xếp công ty mới thành lập lên trước.
+# Nguồn tự tìm công ty, chạy theo thứ tự: "doanhnghiep_me" (có MST, SĐT), "tratencongty" (không có MST/SĐT).
 DISCOVERY_SOURCES = ["doanhnghiep_me", "tratencongty"]
 
-# --- doanhnghiep.me
-# Phân trang của site bị lỗi (trang 2, 3... luôn hiện lại trang 1), nên tool đi theo địa bàn:
-# trang tỉnh -> quận/huyện + phường/xã mới -> phường/xã thuộc quận. Mỗi trang địa bàn ~20 công ty khác nhau.
-# Đây là số trang địa bàn tối đa mỗi tỉnh/thành. Hà Nội có khoảng 580 trang (~11.000 công ty).
-# None = không giới hạn (đi hết mọi địa bàn). Số công ty ghi ra do MAX_COMPANIES quyết định.
+# Số trang tối đa mỗi tỉnh (None = không giới hạn). doanhnghiep.me: trang địa bàn ~20 công ty; tratencongty: 50 công ty.
 DIRECTORY_MAX_PAGES_PER_CITY = None
-
-# --- tratencongty.com
-# Số trang tối đa mỗi tỉnh/thành (50 công ty/trang). None = không giới hạn;
-# tool tự dừng khi gặp trang trống hoặc trang lặp lại nội dung.
 REGISTRY_MAX_PAGES_PER_CITY = None
 
-# Chỉ giữ công ty có tên / ngành nghề / lĩnh vực đoán chứa một trong các từ khóa (không phân biệt dấu).
-# Áp dụng cho công ty tự tìm thấy (không lọc file đầu vào). Để trống = giữ tất cả.
-# Ví dụ: ["xây dựng", "lập trình", "phần mềm", "logistics", "J620"]
+# Chỉ giữ công ty có tên / ngành nghề chứa một trong các từ khóa (không phân biệt dấu); [] = giữ tất cả.
 KEYWORDS: list[str] = []
 
-# ============================================================ NGUỒN BỔ SUNG (làm giàu dữ liệu)
+# ============================================================ NGUỒN BỔ SUNG
 
-# Bật/tắt từng nguồn (chạy theo đúng thứ tự dưới đây).
-# VietQR (Cục Thuế): tên pháp lý chuẩn, tên tiếng Anh, địa chỉ đăng ký, trạng thái hoạt động (đang hoạt động / giải thể).
-# Khi VietQR đã cho trạng thái, tool bỏ qua tratencongty cho công ty đó (đỡ 2 request x 3 giây).
+# VietQR (Cục Thuế): tên pháp lý, trạng thái. Giới hạn lượt theo IP (~1 lượt / phút từ 27/11/2026).
 USE_VIETQR_TAX_LOOKUP = True
-# API miễn phí giới hạn lượt theo IP (trước ~25 lượt / 10 phút, từ 27/11/2026 ~1 lượt / phút); hết lượt thì báo quá tải (429).
-# Mặc định chạy 2 giai đoạn:
-#   Giai đoạn 1 (VIETQR_WAIT_IF_RATE_LIMITED = False): cào mọi nguồn, VietQR còn lượt thì tra, hết lượt thì bỏ qua
-#               cho nhanh -> MKT sớm có SĐT, người đại diện... của mọi công ty.
-#   Giai đoạn 2 (VIETQR_BACKFILL_AFTER_CRAWL = True): cào xong thì tự tra bù VietQR cho công ty còn thiếu,
-#               chờ đúng thời gian VietQR yêu cầu, cập nhật thẳng vào companies.csv.
-#               Chạy riêng giai đoạn 2: python main.py --vietqr-backfill
-# Muốn chạy 1 giai đoạn như cũ (tra VietQR xong mới làm tiếp, chậm hơn): đặt VIETQR_WAIT_IF_RATE_LIMITED = True.
+# Giai đoạn 1 không chờ VietQR (hết lượt thì bỏ qua); giai đoạn 2 tra bù sau khi cào (--vietqr-backfill).
 VIETQR_WAIT_IF_RATE_LIMITED = False
 VIETQR_BACKFILL_AFTER_CRAWL = True
-# --- Proxy miễn phí cho VietQR (tùy chọn, MẶC ĐỊNH TẮT). Bật: VIETQR_FREE_PROXIES = True hoặc --vietqr-free-proxies.
-# Từ 27/11/2026 Cloudflare đứng trước VietQR chỉ cho mỗi IP khoảng 1 lượt / phút. Khi bật, tool dùng thư viện
-# swiftshadow lấy proxy miễn phí từ các danh sách công khai (ProxyScrape, monosans, TheSpeedX...), thử trước xem
-# proxy nào mở được HTTPS, rồi tra VietQR xoay vòng qua các proxy đó cùng IP máy chạy tool. Proxy chết / bị VietQR
-# chặn thì tự bỏ; còn ít hơn VIETQR_FREE_PROXY_MIN proxy thì tự lấy thêm. Các nguồn khác vẫn gọi trực tiếp.
-# Lưu ý: proxy miễn phí không rõ chủ, hay chết; nên hỏi IT trước khi bật trên server công ty.
+# Xoay vòng VietQR qua proxy miễn phí (swiftshadow), mặc định tắt, bật bằng --vietqr-free-proxies.
+# Proxy miễn phí không rõ chủ, nên hỏi IT trước khi bật trên server công ty.
 VIETQR_FREE_PROXIES = False
-VIETQR_FREE_PROXY_MAX = 100             # số proxy lấy về mỗi lần (trước khi thử HTTPS)
-VIETQR_FREE_PROXY_MIN = 10              # còn ít hơn bấy nhiêu proxy dùng được thì lấy thêm
-VIETQR_FREE_PROXY_REFRESH_MINUTES = 10  # không lấy proxy dày hơn bấy nhiêu phút một lần
-DOANHNGHIEP_ME_FETCH_DETAIL = True  # trang chi tiết doanhnghiep.me: người đại diện, tên viết tắt, ngành nghề đăng ký
-# tratencongty.com: TRẠNG THÁI HOẠT ĐỘNG (thay VietQR, không bị giới hạn lượt), người đại diện, loại hình,
-# ngày cấp phép, tên giao dịch, ngành nghề VSIC. Tra cả công ty đã đủ thông tin từ doanhnghiep.me nếu còn thiếu
-# trạng thái, nên chậm hơn (~2 request x 3 giây/công ty). Công ty mới thành lập vài ngày có thể chưa có trên site này.
-USE_TRATENCONGTY = True
-TRATENCONGTY_FETCH_DETAIL = True    # đọc trang chi tiết tratencongty (trạng thái, ngành nghề nằm ở trang này)
-TRATENCONGTY_SEARCH_BY_NAME = True  # công ty chưa có MST thì tra theo tên pháp lý (chỉ nhận khi khớp duy nhất)
-ENRICH_FROM_WEBSITE = True          # website công ty: email, SĐT, lãnh đạo, MST, mạng xã hội, mô tả, nền tảng web
+VIETQR_FREE_PROXY_MAX = 100             # số proxy lấy về mỗi lần
+VIETQR_FREE_PROXY_MIN = 10              # còn ít hơn thì lấy thêm
+VIETQR_FREE_PROXY_REFRESH_MINUTES = 10  # khoảng cách tối thiểu giữa hai lần lấy
+# infodoanhnghiep.com: dữ liệu thuế, số lao động, cơ quan thuế, ngành nghề; giai đoạn 2 tra ở đây trước VietQR.
+# Điều khoản của site cấm thu thập tự động cho mục đích thương mại.
+USE_INFODOANHNGHIEP = True
+INFODOANHNGHIEP_DELAY_SECONDS = 2
+# doanhnghiep.biz: số điện thoại dạng chữ, người đại diện, tình trạng (email bị mã hóa nên không lấy).
+USE_DOANHNGHIEP_BIZ = True
+DOANHNGHIEP_BIZ_DELAY_SECONDS = 2
+DOANHNGHIEP_ME_FETCH_DETAIL = True  # trang chi tiết: người đại diện, tên viết tắt, ngành nghề
+USE_TRATENCONGTY = True             # người đại diện, loại hình, trạng thái, ngành nghề
+TRATENCONGTY_FETCH_DETAIL = True
+TRATENCONGTY_SEARCH_BY_NAME = True  # chưa có MST thì tra theo tên (chỉ nhận khi khớp duy nhất)
+ENRICH_FROM_WEBSITE = True          # website công ty: email, SĐT, lãnh đạo, MST
 
 # ============================================================ CHUNG
 
-# >>> GIÁ TRỊ DUY NHẤT CẦN CHỈNH <<<
-# Dừng sau khi ghi được bấy nhiêu công ty. None = không giới hạn (chạy hết mọi nguồn).
-# Các giới hạn khác trong file này đã để ở mức tối đa.
+# Dừng sau khi ghi được bấy nhiêu công ty; None = không giới hạn.
 MAX_COMPANIES = None
 
-# Giãn cách giữa các request tới cùng một site (giây). Đây không phải giới hạn số lượng;
-# giảm xuống dễ bị site chặn (khi đó còn ra ít kết quả hơn), nên giữ nguyên.
+# Giãn cách giữa hai request tới cùng một site (giây). Giảm xuống dễ bị chặn.
 VIETQR_DELAY_SECONDS = 2
 DOANHNGHIEP_ME_DELAY_SECONDS = 2
 TRATENCONGTY_DELAY_SECONDS = 3
 WEBSITE_DELAY_SECONDS = 1.5
-WEBSITE_MAX_PAGES = 10              # số trang con (liên hệ, giới thiệu, ban lãnh đạo...) đọc thêm ngoài trang chủ
+WEBSITE_MAX_PAGES = 10              # số trang con của website đọc thêm ngoài trang chủ
 
 REQUEST_TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 
-# Tool khai báo trung thực là bot. Không đổi sang User-Agent giả trình duyệt để lách chặn.
+# Khai báo trung thực là bot, không giả trình duyệt.
 USER_AGENT = "Mozilla/5.0 (compatible; MktLeadCrawler/1.0)"
 
-# Thư mục ghi kết quả (tương đối so với thư mục dự án).
+# Thư mục kết quả (tương đối so với thư mục dự án).
 OUTPUT_DIR = "output"

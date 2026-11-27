@@ -82,8 +82,7 @@ def contains_city_key(
     city_keys: list[str],
 ) -> bool:
     """
-    Chuỗi (thường là địa chỉ) có chứa trọn một từ khóa khu vực không.
-    So theo nguyên cụm từ để "an-giang" không khớp nhầm "Tân Giang", "ha-nam" không khớp nhầm "Pha Nam".
+    Chuỗi có chứa trọn cụm từ khóa khu vực không ("an-giang" không khớp "Tân Giang").
     """
     location_key = f"-{to_ascii_key(text)}-"
 
@@ -95,9 +94,7 @@ def find_city_in_text(
     cities: dict[str, list[str]],
 ) -> str:
     """
-    Tìm khu vực (config.ALL_CITIES) nhắc tới trong chuỗi; không thấy thì trả về "".
-    Tỉnh/thành thường đứng cuối địa chỉ, nên khi có nhiều tên (vd. "đường Hà Nội, TP Hồ Chí Minh")
-    thì lấy tên xuất hiện sau cùng.
+    Khu vực nhắc tới trong chuỗi (lấy tên xuất hiện sau cùng); không thấy thì "".
     """
     location_key = f"-{to_ascii_key(text)}-"
     found_city = ""
@@ -211,8 +208,7 @@ def split_brand_and_legal_name(listing_name: str) -> tuple[str, str]:
 
 def looks_like_person_name(name: str) -> bool:
     """
-    Đoán một chuỗi có phải tên người không: có danh xưng (Ông/Bà/Mr/Ms...)
-    hoặc bắt đầu bằng họ người Việt, gồm 2 đến 5 từ viết hoa chữ cái đầu.
+    Đoán chuỗi có phải tên người: có danh xưng hoặc bắt đầu bằng họ Việt, 2-5 từ viết hoa đầu.
     """
     name = clean_text(name)
     if not name:
@@ -278,8 +274,7 @@ def is_same_company_name(
     second_name: str,
 ) -> bool:
     """
-    Hai tên có cùng là một công ty không: ít nhất 80% từ đặc trưng của tên ngắn hơn
-    xuất hiện trong tên kia. Dùng để loại kết quả tra cứu trả nhầm công ty.
+    Cùng một công ty không: ít nhất 80% từ đặc trưng của tên ngắn hơn có trong tên kia.
     """
     first_tokens = company_name_tokens(first_name)
     second_tokens = company_name_tokens(second_name)

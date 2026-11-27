@@ -1,8 +1,5 @@
 """
-Danh sách tỉnh/thành mà các nguồn tìm công ty hỗ trợ.
-
-doanhnghiep.me (/{slug}) và tratencongty.com (/tinh-{slug}/, /thanh-pho-{slug}/) vẫn chia theo 63 tỉnh/thành
-cũ (trước khi sáp nhập còn 34 tỉnh/thành từ 7/2025), và hai site dùng cùng một bộ slug dưới đây.
+Slug tỉnh/thành của doanhnghiep.me và tratencongty.com (63 tỉnh/thành cũ).
 """
 
 from typing import Optional

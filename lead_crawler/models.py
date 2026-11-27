@@ -1,22 +1,22 @@
 """
-Mô hình dữ liệu chung: một doanh nghiệp (Company) và một người liên hệ (ContactPerson).
-Mọi nguồn đều ghi vào cùng mô hình này để gộp được với nhau.
+Mô hình dữ liệu chung: Company và ContactPerson.
 """
 
 from dataclasses import dataclass, field
 
-# Thứ tự cột và tên cột tiếng Việt trong companies.csv
+# Cột của companies.csv; đổi danh sách thì file cũ tự nâng cấp (storage.upgrade_csv_columns).
+# 27/11/2026 bỏ 16 cột luôn trống (Tên thương hiệu, Email, cột website); trường vẫn còn trong Company.
 COMPANY_COLUMNS = [
     ("record_id", "Mã bản ghi"),
     ("discovered_by", "Tìm thấy từ"),
     ("company_name", "Tên công ty"),
-    ("brand_name", "Tên thương hiệu"),
     ("legal_name", "Tên pháp lý (Cục Thuế)"),
     ("international_name", "Tên tiếng Anh"),
     ("short_name", "Tên viết tắt"),
     ("tax_code", "Mã số thuế"),
     ("tax_code_source", "Nguồn MST"),
     ("tax_status", "Trạng thái MST"),
+    ("tax_office", "Cơ quan thuế quản lý"),
     ("legal_representative", "Người đại diện pháp luật"),
     ("contacts_summary", "Liên hệ & chức vụ"),
     ("contact_count", "Số liên hệ"),
@@ -25,6 +25,8 @@ COMPANY_COLUMNS = [
     ("founded_year", "Năm thành lập"),
     ("operating_since", "Ngày bắt đầu hoạt động"),
     ("years_active", "Số năm hoạt động"),
+    ("employee_count", "Số lao động"),
+    ("branch_count", "Số chi nhánh / VP đại diện"),
     ("industry", "Ngành nghề chính"),
     ("industry_guess", "Lĩnh vực (suy từ tên)"),
     ("registered_industries", "Ngành nghề đăng ký (mã VSIC)"),
@@ -36,23 +38,10 @@ COMPANY_COLUMNS = [
     ("address", "Địa chỉ"),
     ("registered_address", "Địa chỉ đăng ký thuế"),
     ("phone", "Điện thoại"),
-    ("email", "Email"),
-    ("website", "Website"),
-    ("facebook", "Facebook"),
-    ("zalo", "Zalo"),
-    ("linkedin", "LinkedIn (trang công ty)"),
-    ("youtube", "YouTube"),
-    ("tiktok", "TikTok"),
-    ("website_emails", "Email (từ website)"),
-    ("website_phones", "SĐT (từ website)"),
-    ("website_people", "Lãnh đạo/nhân sự (từ website)"),
-    ("website_title", "Tiêu đề website"),
-    ("website_description", "Mô tả website"),
-    ("website_platform", "Nền tảng website"),
-    ("website_has_english", "Có bản tiếng Anh"),
-    ("website_hiring_page", "Trang tuyển dụng"),
     ("directory_url", "Link doanhnghiep.me"),
     ("registry_url", "Link tratencongty"),
+    ("infodoanhnghiep_url", "Link infodoanhnghiep"),
+    ("doanhnghiep_biz_url", "Link doanhnghiep.biz"),
     ("sources", "Nguồn dữ liệu"),
     ("crawled_at", "Ngày thu thập"),
 ]
@@ -80,8 +69,7 @@ TAX_CODE_SOURCE_WEBSITE = "Website công ty"
 @dataclass
 class Company:
     """
-    Một doanh nghiệp. Các nguồn bổ sung chỉ điền vào trường còn trống (set_if_empty),
-    trừ nguồn chính thức như Cục Thuế được phép ghi đè trường pháp lý.
+    Một doanh nghiệp. Nguồn bổ sung chỉ điền trường trống (set_if_empty), trừ dữ liệu thuế.
     """
 
     record_id: str = ""
@@ -94,6 +82,7 @@ class Company:
     tax_code: str = ""
     tax_code_source: str = ""
     tax_status: str = ""
+    tax_office: str = ""
     legal_representative: str = ""
     contacts_summary: str = ""
     contact_count: str = ""
@@ -102,6 +91,8 @@ class Company:
     founded_year: str = ""
     operating_since: str = ""
     years_active: str = ""
+    employee_count: str = ""
+    branch_count: str = ""
     industry: str = ""
     industry_guess: str = ""
     registered_industries: str = ""
@@ -130,6 +121,8 @@ class Company:
     website_hiring_page: str = ""
     directory_url: str = ""
     registry_url: str = ""
+    infodoanhnghiep_url: str = ""
+    doanhnghiep_biz_url: str = ""
     sources: list[str] = field(default_factory=list)
     crawled_at: str = ""
 

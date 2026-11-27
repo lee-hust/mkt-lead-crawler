@@ -1,8 +1,5 @@
 """
-Nguồn file đầu vào: MKT tự đưa danh sách công ty (từ CRM, sự kiện, danh sách mua có bản quyền...),
-tool sẽ làm giàu dữ liệu bằng các nguồn bổ sung (MST, người đại diện, website...).
-
-Mẫu file: input_template.csv. Chỉ cần có ít nhất cột "Tên công ty" hoặc "Mã số thuế".
+File đầu vào của MKT (mẫu input_template.csv): cần cột "Tên công ty" hoặc "Mã số thuế".
 """
 
 import csv
@@ -44,8 +41,7 @@ def read_input_companies(
     cities: dict[str, list[str]],
 ) -> Iterator[Company]:
     """
-    Đọc file CSV đầu vào (UTF-8, có hoặc không có BOM) và trả về từng Company.
-    Cột Tỉnh/TP dùng để gán khu vực; để trống thì đoán theo địa chỉ.
+    Đọc file CSV đầu vào, trả về từng Company; Tỉnh/TP trống thì đoán theo địa chỉ.
     """
     if not input_path.exists():
         logger.error("Không tìm thấy file đầu vào: %s", input_path)

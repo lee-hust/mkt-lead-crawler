@@ -1,6 +1,5 @@
 """
-Tạo BeautifulSoup dùng chung cho mọi nguồn: ưu tiên lxml (nhanh hơn), nếu chưa cài lxml
-thì dùng html.parser có sẵn của Python để chương trình không bị dừng.
+Tạo BeautifulSoup dùng chung: ưu tiên lxml, chưa cài thì dùng html.parser.
 """
 
 import importlib.util

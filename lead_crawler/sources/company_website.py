@@ -1,11 +1,6 @@
 """
-Nguồn website riêng của doanh nghiệp: đọc trang chủ và vài trang "Liên hệ / Giới thiệu /
-Ban lãnh đạo / Đội ngũ" để lấy những gì chính công ty công bố:
-email, SĐT, lãnh đạo (họ tên + chức vụ), MST, kênh mạng xã hội, mô tả, nền tảng web,
-có bản tiếng Anh / trang tuyển dụng hay không.
-
-Nếu tin đăng không có website, thử suy ra từ tên miền email công ty (bỏ gmail, yahoo...).
-Không giải mã email bị ẩn (Cloudflare email protection), không đoán email theo tên người.
+Website công ty: đọc trang chủ và trang liên hệ / giới thiệu để lấy email, SĐT, lãnh đạo, MST, mạng xã hội.
+Không giải mã email bị ẩn, không đoán email theo tên người.
 """
 
 import logging
@@ -104,8 +99,7 @@ ENGLISH_KEYWORDS = ("english", "/en/", "/en", "lang=en", "hl=en", "tieng-anh")
 PHONE_LINE_WORDS = {"hotline", "tel", "phone", "sdt", "dt", "mobile", "zalo", "fax"}
 PHONE_LINE_PHRASES = ("dien-thoai", "di-dong", "lien-he")
 
-# Cụm "MST: 0312345678": dùng để đọc MST, đồng thời xóa khỏi dòng trước khi tìm SĐT
-# (MST 10 số rất giống số di động).
+# Cụm "MST: ...": đọc MST rồi xóa khỏi dòng trước khi tìm SĐT (MST giống số di động).
 TAX_CODE_MENTION_REGEX = re.compile(
     r"(?i)(?:mst|mã số thuế|mã số doanh nghiệp|msdn|mã số dn|mã doanh nghiệp|tax code|tax id)"
     r"\s*[:.]?\s*(\d[\d\s.]{8,12}\d(?:\s*-\s*\d{3})?)"
@@ -370,8 +364,7 @@ def apply_home_page_signals(
 
 def extract_page_contacts(html: str) -> dict:
     """
-    Lấy từ một trang HTML: emails, phones, people, tax_codes, social_links.
-    SĐT chỉ lấy từ link tel: hoặc dòng có chữ "điện thoại / hotline / tel..." để tránh nhầm với MST.
+    Lấy email, SĐT, người, MST, mạng xã hội từ một trang; SĐT chỉ lấy từ tel: hoặc dòng có chữ điện thoại / hotline.
     """
     beautiful_soup = make_soup(html)
     social_links: dict[str, str] = {}

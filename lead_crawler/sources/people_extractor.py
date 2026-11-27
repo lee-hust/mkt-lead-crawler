@@ -1,9 +1,5 @@
 """
-Nhận diện cặp (họ tên, chức vụ) trong văn bản trang web, ví dụ:
-    "Giám đốc: Ông Nguyễn Văn Nam"
-    "Bà Trần Thị Hoa - Kế toán trưởng"
-    "NGUYỄN VĂN NAM" xuống dòng "Tổng Giám đốc"
-Đây là heuristic: kết quả luôn kèm link nguồn để MKT kiểm tra lại.
+Nhận diện cặp (họ tên, chức vụ) trong văn bản trang web, vd. "Giám đốc: Ông Nguyễn Văn Nam" (heuristic).
 """
 
 import re
@@ -78,8 +74,7 @@ def trim_name(name: str) -> str:
 
 def extract_people(lines: list[str]) -> list[dict]:
     """
-    Trả về [{"name", "title", "phone", "email"}] tìm được trong các dòng văn bản.
-    SĐT/email chỉ lấy khi nằm cùng dòng với người đó.
+    Trả về [{"name", "title", "phone", "email"}]; SĐT / email chỉ lấy khi cùng dòng.
     """
     people: dict[str, dict] = {}
 

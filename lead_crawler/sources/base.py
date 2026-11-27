@@ -9,14 +9,12 @@ from lead_crawler.models import Company, ContactPerson
 
 class EnrichmentSource(ABC):
     """
-    Nguồn bổ sung: nhận một Company đã có, điền thêm các trường còn trống
-    và trả về danh sách người liên hệ tìm được ở nguồn đó.
+    Nguồn bổ sung: điền trường còn trống của Company, trả về người liên hệ tìm được.
     """
 
     name: str = ""
 
-    # True nếu nguồn tra theo MST: khi nguồn chạy sau (vd. website) tìm ra MST,
-    # pipeline sẽ chạy lại nguồn này một lần nữa.
+    # True nếu tra theo MST: MST tìm ra muộn thì pipeline chạy lại nguồn này.
     uses_tax_code: bool = False
 
     @abstractmethod

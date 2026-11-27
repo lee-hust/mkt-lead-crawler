@@ -1,6 +1,5 @@
 """
-Nguồn tra cứu mã số thuế qua API công khai của VietQR (dữ liệu tổng hợp từ Cục Thuế).
-Dùng để xác thực tên pháp lý, địa chỉ đăng ký và trạng thái hoạt động của doanh nghiệp.
+VietQR: tra MST qua API công khai (dữ liệu Cục Thuế) lấy tên pháp lý, địa chỉ, trạng thái.
 """
 
 import logging
@@ -33,9 +32,7 @@ class VietQrSource(EnrichmentSource):
         overwrite_existing: bool = False,
     ):
         """
-        overwrite_existing=True dùng khi tra bù (giai đoạn 2): công ty đã được các nguồn chạy sau điền
-        trạng thái / tên tiếng Anh / tên viết tắt, nay ghi đè bằng dữ liệu Cục Thuế để kết quả giống hệt
-        lúc VietQR được tra ngay từ đầu (khi đó VietQR chạy trước nên được ưu tiên).
+        overwrite_existing=True (giai đoạn 2): ghi đè dữ liệu nguồn khác đã điền bằng dữ liệu Cục Thuế.
         """
         self.http_client = http_client
         self.wait_if_rate_limited = wait_if_rate_limited
@@ -63,8 +60,7 @@ class VietQrSource(EnrichmentSource):
         data = payload.get("data") or {}
         legal_name = clean_text(data.get("name"))
 
-        # MST đọc từ website chưa chắc là của công ty này (có thể là MST đơn vị làm web...),
-        # nên phải khớp tên mới nhận.
+        # MST lấy từ website có thể là của đơn vị khác, phải khớp tên mới nhận.
         if company.tax_code_source == TAX_CODE_SOURCE_WEBSITE:
             known_names = [company.legal_name, company.company_name, company.brand_name]
             if not any(is_same_company_name(legal_name, known_name) for known_name in known_names if known_name):

@@ -4,6 +4,8 @@ Ghi kết quả ra CSV và gộp trùng; chạy lại sẽ bỏ qua công ty đ�
 
 import csv
 import logging
+import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +16,67 @@ logger = logging.getLogger(__name__)
 
 # utf-8-sig thêm BOM để Excel mở CSV tiếng Việt không lỗi font
 CSV_ENCODING = "utf-8-sig"
+
+
+def upgrade_csv_columns(
+    path: Path,
+    headers: list[str],
+) -> bool:
+    """
+    File CSV cũ khác bộ cột (cùng cột đầu tiên): ghi lại theo bộ cột mới, ghép theo tên cột, có bản sao lưu.
+    Trả về True nếu file khớp bộ cột mới.
+    """
+    if not path.exists() or path.stat().st_size == 0:
+        return True
+
+    with path.open("r", encoding=CSV_ENCODING, newline="") as existing_file:
+        csv_reader = csv.reader(existing_file)
+        existing_headers = next(csv_reader, [])
+        if existing_headers == headers:
+            return True
+
+        is_same_kind = bool(existing_headers) and existing_headers[0] == headers[0]
+        if not is_same_kind or len(set(existing_headers)) != len(existing_headers):
+            return False
+
+        rows = [row for row in csv_reader if row]
+
+    positions = [existing_headers.index(header) if header in existing_headers else -1 for header in headers]
+    added_headers = [header for header in headers if header not in existing_headers]
+    removed_headers = [header for header in existing_headers if header not in headers]
+    dropped_value_count = sum(
+        1
+        for row in rows
+        for index, header in enumerate(existing_headers)
+        if header in removed_headers and index < len(row) and row[index].strip()
+    )
+    backup_path = path.with_name(f"{path.stem}_truoc_nang_cap_{datetime.now():%Y%m%d_%H%M%S}{path.suffix}")
+    temporary_path = path.with_name(path.name + ".tmp")
+    try:
+        shutil.copy2(path, backup_path)
+        with temporary_path.open("w", encoding=CSV_ENCODING, newline="") as upgraded_file:
+            csv_writer = csv.writer(upgraded_file)
+            csv_writer.writerow(headers)
+            for row in rows:
+                csv_writer.writerow([row[position] if 0 <= position < len(row) else "" for position in positions])
+
+        os.replace(temporary_path, path)
+    except OSError as os_error:
+        logger.error("Không nâng cấp được cột của %s (%s). Nếu đang mở file bằng Excel thì đóng lại.", path.name, os_error)
+
+        return False
+
+    logger.warning(
+        "Đã nâng cấp cột của %s (%d dòng, giữ nguyên dữ liệu): thêm %s; bỏ %s (%d ô có dữ liệu). Bản gốc: %s",
+        path.name,
+        len(rows),
+        ", ".join(added_headers) or "không",
+        ", ".join(removed_headers) or "không",
+        dropped_value_count,
+        backup_path.name,
+    )
+
+    return True
 
 
 def company_name_key(
@@ -32,9 +95,7 @@ def company_name_key(
 
 class CsvStore:
     """
-    Ghi nối tiếp companies.csv và contacts.csv; mỗi công ty ghi xong là flush ngay, nên tắt
-    chương trình giữa chừng không mất dữ liệu. Gộp trùng theo 3 khóa: mã bản ghi, MST, tên + khu vực
-    (một công ty có thể xuất hiện ở nhiều ngành, nhiều nguồn).
+    Ghi nối tiếp companies.csv / contacts.csv (flush từng công ty), gộp trùng theo mã bản ghi, MST, tên + khu vực.
     """
 
     def __init__(self, output_dir: Path):
@@ -124,9 +185,12 @@ class CsvStore:
         load_seen: bool,
     ):
         """
-        Mở file ở chế độ nối tiếp. Nếu file cũ có bộ cột khác (do đổi code) thì đổi tên file cũ
-        để giữ lại, rồi tạo file mới.
+        Mở file để ghi nối tiếp; khác bộ cột thì nâng cấp, không được thì đổi tên file cũ.
         """
+        upgrade_csv_columns(
+            path,
+            headers,
+        )
         if path.exists() and path.stat().st_size > 0:
             with path.open("r", encoding=CSV_ENCODING, newline="") as existing_file:
                 csv_reader = csv.reader(existing_file)

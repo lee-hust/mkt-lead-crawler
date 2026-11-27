@@ -1,15 +1,6 @@
 """
-Nguồn doanhnghiep.me: cơ sở dữ liệu doanh nghiệp theo 63 tỉnh/thành (Hà Nội ~446 nghìn,
-TP.HCM ~833 nghìn, Đà Nẵng ~87 nghìn doanh nghiệp), công ty mới thành lập xếp trước.
-
-- Tìm công ty (iter_companies): phân trang của site bị lỗi (trang 2, 3... luôn hiện lại trang 1),
-  nên tool đi theo địa bàn: trang tỉnh -> quận/huyện cũ + phường/xã mới -> phường/xã thuộc quận.
-  Mỗi trang địa bàn cho 20 công ty mới nhất của địa bàn đó, có sẵn dạng chữ: tên, MST, điện thoại,
-  địa chỉ, ngành nghề chính, ngày thành lập, phường/quận. Hà Nội có khoảng 580 trang địa bàn.
-- Bổ sung (enrich): trang chi tiết có người đại diện, tên viết tắt, ngành nghề đăng ký kèm mã.
-
-robots.txt cho phép mọi bot; điều khoản chỉ yêu cầu ghi rõ nguồn doanhnghiep.me
-(cột "Nguồn dữ liệu" và "Link doanhnghiep.me" trong CSV đáp ứng yêu cầu này).
+doanhnghiep.me: tìm công ty theo địa bàn (phân trang của site bị lỗi) và đọc trang chi tiết.
+Điều khoản yêu cầu ghi nguồn (cột Nguồn dữ liệu, Link doanhnghiep.me).
 """
 
 import logging
@@ -71,8 +62,7 @@ class DoanhNghiepMeSource(EnrichmentSource):
         max_pages: Optional[int],
     ) -> Iterator[Company]:
         """
-        Duyệt các trang địa bàn của từng tỉnh/thành theo chiều rộng (tỉnh -> quận/phường -> phường con),
-        tối đa max_pages trang mỗi tỉnh (None = đi hết). Công ty trùng giữa các trang chỉ trả về một lần.
+        Duyệt trang địa bàn theo chiều rộng (tỉnh -> quận/phường -> phường con), tối đa max_pages trang mỗi tỉnh.
         """
         for city_name, city_keys in cities.items():
             province_slug = find_province_slug(city_keys)
@@ -155,8 +145,7 @@ def find_location_links(
     province_slug: str,
 ) -> list[str]:
     """
-    Link địa bàn trong cùng tỉnh: /<tỉnh>/<quận hoặc phường mới> và /<tỉnh>/<quận>/<phường>.
-    Bỏ link phân trang (/pageN, site bị lỗi) và link công ty (từ 3 cấp trở lên).
+    Link địa bàn cùng tỉnh; bỏ link phân trang và link công ty.
     """
     links = re.findall(rf'href="(/{re.escape(province_slug)}(?:/[a-z0-9-]+){{1,2}})"', page_html)
 

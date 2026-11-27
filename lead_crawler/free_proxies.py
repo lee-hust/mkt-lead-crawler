@@ -1,13 +1,5 @@
 """
-Lấy proxy miễn phí cho VietQR bằng thư viện swiftshadow (https://github.com/sachin-sankar/swiftshadow).
-
-swiftshadow gom proxy từ các danh sách công khai (ProxyScrape, monosans, TheSpeedX, proxydb.net...) và chỉ thử
-xem proxy có ra được Internet qua HTTP. VietQR chạy HTTPS, nên ở đây thử thêm từng proxy với một trang HTTPS
-trung lập (api.ipify.org) rồi mới giao cho HttpClient.
-
-Việc lấy proxy chạy ở một luồng nền (thư viện gọi các nguồn không giới hạn thời gian chờ, có thể treo),
-nên tool không phải đứng chờ: trong lúc đó VietQR vẫn tra bằng IP máy chạy tool.
-Proxy miễn phí không rõ chủ và hay chết; tool chỉ dùng chúng cho VietQR, khi được bật.
+Lấy proxy miễn phí cho VietQR bằng swiftshadow (ở luồng nền), chỉ giữ proxy mở được HTTPS.
 """
 
 import asyncio
@@ -28,9 +20,7 @@ MAX_FETCH_SECONDS = 15 * 60
 
 class FreeProxyPool:
     """
-    Nguồn proxy cho HttpClient.set_proxy_supplier: mỗi lần được hỏi thì trả về proxy mới đã thử HTTPS
-    (nếu luồng nền vừa lấy xong), không thì bắt đầu lấy ở nền và trả về rỗng.
-    Không lấy dày hơn refresh_seconds một lần.
+    Nguồn proxy cho HttpClient.set_proxy_supplier: trả proxy đã lấy xong, chưa có thì lấy ở nền.
     """
 
     def __init__(
@@ -138,8 +128,7 @@ class FreeProxyPool:
 
 def quiet_swiftshadow_logger() -> None:
     """
-    swiftshadow tự gắn một bộ in log riêng ra màn hình (log bị in hai lần) và in nhiều dòng INFO.
-    Bỏ bộ in đó, chỉ giữ cảnh báo, để log đi chung file crawl.log của tool.
+    Bỏ bộ in log riêng của swiftshadow (log bị in hai lần), chỉ giữ cảnh báo.
     """
     swiftshadow_logger = logging.getLogger("swiftshadow")
     for handler in list(swiftshadow_logger.handlers):

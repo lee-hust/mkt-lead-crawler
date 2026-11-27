@@ -1,11 +1,5 @@
 """
-Luồng chính:
-1. Tìm công ty từ các nguồn đầu vào:
-   file của MKT -> doanhnghiep.me (theo tỉnh, có MST + SĐT) -> tratencongty.com (theo tỉnh).
-2. Với mỗi công ty, lần lượt cho các nguồn bổ sung điền thêm dữ liệu:
-   VietQR (Cục Thuế) -> doanhnghiep.me chi tiết -> Tra Tên Công Ty -> Website công ty;
-   nếu MST tìm ra muộn (từ website) thì chạy lại các nguồn tra theo MST.
-3. Gộp trùng theo mã bản ghi / MST / tên + khu vực, ghi CSV.
+Luồng chính: tìm công ty -> lần lượt các nguồn bổ sung -> gộp trùng, ghi CSV.
 """
 
 import logging
@@ -20,7 +14,9 @@ from lead_crawler.industry_guess import guess_industry, guess_industry_from_text
 from lead_crawler.models import Company, ContactPerson
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.sources.company_website import CompanyWebsiteSource
+from lead_crawler.sources.doanhnghiep_biz import DoanhNghiepBizSource
 from lead_crawler.sources.doanhnghiep_me import DoanhNghiepMeSource
+from lead_crawler.sources.infodoanhnghiep import InfoDoanhNghiepSource
 from lead_crawler.sources.input_file import read_input_companies
 from lead_crawler.sources.tratencongty import TraTenCongTySource
 from lead_crawler.free_proxies import FreeProxyPool
@@ -56,6 +52,12 @@ class Settings:
     vietqr_free_proxy_max: int = 100
     vietqr_free_proxy_min: int = 10
     vietqr_free_proxy_refresh_minutes: int = 10
+    # infodoanhnghiep.com: dữ liệu đăng ký thuế theo MST (thay VietQR khi hết lượt), số lao động, cơ quan thuế...
+    use_infodoanhnghiep: bool = True
+    infodoanhnghiep_delay_seconds: float = 2
+    # doanhnghiep.biz: số điện thoại dạng chữ, người đại diện, tình trạng.
+    use_doanhnghiep_biz: bool = True
+    doanhnghiep_biz_delay_seconds: float = 2
     doanhnghiep_me_fetch_detail: bool = True
     use_tratencongty: bool = True
     tratencongty_fetch_detail: bool = True
@@ -111,10 +113,8 @@ def build_enrichment_sources(
     tra_ten_cong_ty_source: TraTenCongTySource,
 ) -> list[EnrichmentSource]:
     """
-    Danh sách nguồn bổ sung theo thứ tự chạy. Thứ tự quan trọng:
-    VietQR (cần MST; cho tên pháp lý chuẩn, trạng thái) -> doanhnghiep.me chi tiết (người đại diện,
-    ngành nghề) -> Tra Tên Công Ty (bù phần còn thiếu) -> Website (có thể tìm thêm MST).
-    Thêm nguồn mới thì đăng ký ở đây.
+    Nguồn bổ sung theo thứ tự: VietQR -> infodoanhnghiep -> doanhnghiep.me chi tiết -> doanhnghiep.biz
+    -> tratencongty -> website.
     """
     enrichment_sources: list[EnrichmentSource] = []
     if settings.use_vietqr_tax_lookup:
@@ -126,8 +126,26 @@ def build_enrichment_sources(
             )
         )
 
+    if settings.use_infodoanhnghiep:
+        enrichment_sources.append(
+            InfoDoanhNghiepSource(
+                http_client,
+                settings.infodoanhnghiep_delay_seconds,
+                False,
+            )
+        )
+
     if settings.doanhnghiep_me_fetch_detail:
         enrichment_sources.append(doanh_nghiep_me_source)
+
+    if settings.use_doanhnghiep_biz:
+        enrichment_sources.append(
+            DoanhNghiepBizSource(
+                http_client,
+                settings.doanhnghiep_biz_delay_seconds,
+                False,
+            )
+        )
 
     if settings.use_tratencongty:
         enrichment_sources.append(tra_ten_cong_ty_source)
@@ -153,8 +171,7 @@ def iter_discovered_companies(
     tra_ten_cong_ty_source: TraTenCongTySource,
 ) -> Iterator[Company]:
     """
-    Nối các nguồn đầu vào theo thứ tự: file của MKT -> doanhnghiep.me -> tratencongty.com.
-    Nguồn nào bị chặn / lỗi thì bỏ qua và chuyển sang nguồn kế tiếp.
+    Nối các nguồn đầu vào: file MKT -> doanhnghiep.me -> tratencongty; nguồn lỗi thì bỏ qua.
     """
     if settings.input_file:
         logger.info("=== Nguồn đầu vào: file %s", settings.input_file)
@@ -214,8 +231,7 @@ def finalize_contacts(
 
 def summarize_contacts(contact_persons: list[ContactPerson]) -> str:
     """
-    Gộp người liên hệ thành một ô để MKT xem ngay trên file công ty,
-    vd. "Người đại diện pháp luật: Đàm Thị Lan | Kế toán trưởng: Trần Thị Hoa (0912345678)".
+    Gộp người liên hệ thành một ô, vd. "Người đại diện pháp luật: ... | Kế toán trưởng: ...".
     """
     parts = []
     for contact_person in contact_persons:
@@ -246,8 +262,7 @@ def enrich_company(
     enrichment_sources: list[EnrichmentSource],
 ) -> list[ContactPerson]:
     """
-    Cho lần lượt từng nguồn bổ sung dữ liệu. Nếu MST chỉ tìm ra ở nguồn chạy sau (vd. website),
-    chạy lại các nguồn tra theo MST đã bị bỏ lỡ.
+    Chạy lần lượt các nguồn bổ sung; MST tìm ra muộn thì chạy lại các nguồn tra theo MST.
     """
     contact_persons: list[ContactPerson] = []
     tax_code_at_run: dict[int, str] = {}
@@ -278,11 +293,9 @@ def enrich_company(
 
 def fill_derived_fields(company: Company) -> None:
     """
-    Tính các trường suy ra từ trường khác: lĩnh vực đoán, loại hình doanh nghiệp,
-    năm thành lập và số năm hoạt động (từ ngày thành lập / cấp phép).
+    Tính trường suy ra: lĩnh vực đoán, loại hình, năm thành lập, số năm hoạt động.
     """
-    # Đoán lần lượt: tên công ty -> ngành chính -> ngành đăng ký đầu tiên. Không dùng cả danh sách
-    # ngành đăng ký vì công ty mới thường đăng ký vài chục ngành, khớp gần như mọi lĩnh vực.
+    # Không dùng cả danh sách ngành đăng ký: công ty mới đăng ký vài chục ngành, khớp mọi lĩnh vực.
     if not company.industry_guess:
         company.industry_guess = guess_industry_from_texts(
             [
@@ -308,8 +321,7 @@ def matches_keywords(
     keywords: list[str],
 ) -> bool:
     """
-    Công ty có chứa một trong các từ khóa (trong tên, ngành nghề, lĩnh vực đoán) không.
-    Không có từ khóa = nhận hết.
+    Công ty có chứa một trong các từ khóa không (không có từ khóa = nhận hết).
     """
     if not keywords:
         return True

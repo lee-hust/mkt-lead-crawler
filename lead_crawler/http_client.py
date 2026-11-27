@@ -1,13 +1,6 @@
 """
-HTTP client dùng chung cho mọi nguồn: tôn trọng robots.txt, giãn cách request theo
-từng host, thử lại khi lỗi tạm thời. Gặp 403 / chặn bot thì dừng host đó, không tìm
-cách vượt qua.
-
-Riêng host được gắn nguồn proxy (hiện chỉ VietQR khi bật proxy miễn phí, xem set_proxy_supplier): gọi xoay
-vòng qua nhiều đường (IP máy chạy tool và từng proxy), mỗi đường có khoảng nghỉ và thời gian bị bắt chờ riêng.
-Đường nào bị báo quá tải (429) thì chỉ nghỉ riêng đường đó, các đường khác chạy tiếp. Proxy bị từ chối (403),
-sai tài khoản hoặc lỗi kết nối liên tiếp thì bị bỏ; còn ít proxy thì lấy thêm từ nguồn proxy. IP máy chạy tool
-bị 403 thì bỏ IP đó và chạy tiếp bằng proxy; không còn đường nào thì dừng host như trên.
+HTTP client dùng chung: tuân thủ robots.txt, giãn cách theo host, thử lại khi lỗi; gặp 403 thì dừng host.
+Host có nguồn proxy (VietQR) được gọi xoay vòng qua IP máy và từng proxy; đường nào bị 429 thì nghỉ riêng.
 """
 
 import json
@@ -147,9 +140,7 @@ class HttpClient:
         min_proxy_routes: int,
     ) -> None:
         """
-        Cho host này gọi xoay vòng qua proxy, bên cạnh IP máy chạy tool.
-        proxy_supplier() trả về danh sách URL proxy mới (http://ip:port), rỗng nếu chưa có; được gọi mỗi khi
-        số proxy đang dùng được ít hơn min_proxy_routes, nên hàm này phải tự giới hạn số lần lấy proxy.
+        Gọi host qua proxy, bên cạnh IP máy. proxy_supplier() trả proxy mới (có thể rỗng), được hỏi khi thiếu proxy.
         """
         host = host.lower()
         self.proxy_suppliers[host] = (proxy_supplier, min_proxy_routes)
@@ -238,9 +229,7 @@ class HttpClient:
         wait_if_rate_limited: bool = False,
     ) -> Optional[str]:
         """
-        Tải một trang HTML. Trả về None nếu robots.txt cấm, lỗi mạng, hoặc không phải HTML.
-        wait_if_rate_limited=True: chờ khi site báo quá tải (dùng cho trang danh sách — bỏ qua thì mất công ty).
-        Mặc định False: site đang bắt chờ thì bỏ qua request này để các nguồn khác chạy tiếp.
+        Tải trang HTML; None nếu robots.txt cấm, lỗi hoặc không phải HTML. wait_if_rate_limited: chờ khi bị 429.
         """
         return self._fetch(
             url,
@@ -254,9 +243,7 @@ class HttpClient:
         wait_if_rate_limited: bool = False,
     ) -> Optional[dict]:
         """
-        Gọi một API trả JSON. Trả về None nếu lỗi.
-        wait_if_rate_limited=True: API báo quá tải thì chờ đúng thời gian yêu cầu rồi gọi lại;
-        mặc định False: bỏ qua lần gọi này để các nguồn khác chạy tiếp.
+        Gọi API trả JSON; None nếu lỗi. wait_if_rate_limited: chờ khi bị 429.
         """
         text = self._fetch(
             url,
@@ -336,8 +323,7 @@ class HttpClient:
         wait_if_rate_limited: bool,
     ) -> Optional[str]:
         """
-        Tải URL với retry. Chỉ trả về nội dung khi HTTP 200.
-        Host có nhiều đường gọi (proxy) thì mỗi lần thử chọn đường đang rảnh.
+        Tải URL với retry, chỉ trả nội dung khi HTTP 200; mỗi lần thử chọn đường gọi đang rảnh.
         """
         host = urlparse(url).netloc.lower()
         if not host or host in self.blocked_hosts:
@@ -350,8 +336,7 @@ class HttpClient:
         if route is None:
             return None
 
-        # Nguồn bổ sung mà còn phải chờ lâu mới tới lượt (do đã bị giảm tốc) thì bỏ qua lần này,
-        # không bắt cả chương trình đứng chờ.
+        # Nguồn bổ sung còn phải chờ lâu thì bỏ qua lần này.
         if not wait_if_rate_limited and self._remaining_delay(route) > MAX_ENRICHMENT_WAIT_SECONDS:
             return None
 
@@ -436,9 +421,7 @@ class HttpClient:
                 if route.proxy_url is not None and not has_retry_after:
                     wait_seconds = PROXY_RATE_LIMIT_COOLDOWN_SECONDS
 
-                # Chế độ không chờ: tạm bỏ qua host đến hết thời gian bị yêu cầu chờ.
-                # Site nói rõ thời gian chờ (Retry-After, vd. VietQR cấp lượt theo khung 10 phút) thì chờ đúng
-                # thời gian đó là đủ, hết thời gian là dùng tiếp được lượt mới; không nói rõ thì giảm tốc host đó.
+                # Không chờ: bỏ qua host tới hết thời gian chờ; site không ghi Retry-After thì giảm tốc.
                 if not wait_if_rate_limited and not has_retry_after and route.proxy_url is None:
                     self._slow_down(route)
 
@@ -468,8 +451,7 @@ class HttpClient:
 
                     return None
 
-                # Chế độ chờ (trang danh sách, hoặc VietQR khi bật chờ): chờ đúng thời gian site yêu cầu rồi gọi lại.
-                # Không giảm tốc thêm, vì thời gian chờ site đưa ra đã đủ để hết bị giới hạn.
+                # Chế độ chờ: chờ đúng thời gian site yêu cầu rồi gọi lại.
                 logger.warning(
                     "%s báo quá tải (%d), chờ %d giây (đến %s) rồi gọi lại",
                     host,
@@ -497,9 +479,7 @@ class HttpClient:
         wait_if_rate_limited: bool,
     ) -> Optional[Route]:
         """
-        Chọn đường gọi host: trong các đường không bị bắt chờ, lấy đường sớm tới lượt nhất; bằng nhau thì lấy
-        đường lâu chưa dùng nhất, nên các proxy được dùng xoay vòng đều nhau.
-        Mọi đường đều đang bị bắt chờ: chế độ chờ thì ngủ tới khi có đường rảnh, không thì trả về None.
+        Chọn đường rảnh sớm tới lượt nhất (bằng nhau thì đường lâu chưa dùng). Hết đường rảnh: chế độ chờ thì ngủ, không thì None.
         """
         if host in self.blocked_hosts:
             return None
@@ -560,8 +540,7 @@ class HttpClient:
 
     def _handle_forbidden(self, route: Route) -> bool:
         """
-        Xử lý 403. Qua proxy: bỏ proxy đó (IP proxy bị từ chối). Từ IP máy chạy tool: còn proxy thì bỏ IP này và
-        chạy tiếp bằng proxy, không còn thì dừng host như cũ. Trả về True nếu còn đường để gọi tiếp.
+        403: bỏ proxy bị từ chối; IP máy bị từ chối mà còn proxy thì bỏ IP máy, không thì dừng host. True nếu còn đường.
         """
         host = route.host
         if route.proxy_url is not None:
@@ -594,8 +573,7 @@ class HttpClient:
         request_exception: requests.RequestException,
     ) -> None:
         """
-        Lỗi kết nối qua proxy: đòi tài khoản (407) thì bỏ proxy; lỗi khác thì nghỉ proxy đó 60 giây,
-        lỗi liên tiếp MAX_PROXY_FAILURES lần thì bỏ hẳn. Gọi tiếp qua đường khác.
+        Lỗi qua proxy: 407 thì bỏ; lỗi khác nghỉ 60 giây, lỗi MAX_PROXY_FAILURES lần liên tiếp thì bỏ.
         """
         if PROXY_AUTH_ERROR_PATTERN.search(str(request_exception)):
             self._drop_route(
@@ -628,8 +606,7 @@ class HttpClient:
         reason: str,
     ) -> None:
         """
-        Bỏ hẳn một đường gọi (proxy, hoặc IP máy chạy tool) trong lần chạy hiện tại.
-        Không còn đường nào (và không lấy thêm được proxy) thì dừng truy cập host.
+        Bỏ một đường gọi trong lần chạy này; hết đường và không lấy thêm được proxy thì dừng host.
         """
         routes = self.get_routes(route.host)
         if route in routes:
