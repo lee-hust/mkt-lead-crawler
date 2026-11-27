@@ -12,6 +12,7 @@ Dòng lệnh:
     python main.py --input danh_sach.csv --sources  # chỉ làm giàu danh sách có sẵn, không tự tìm công ty
     python main.py --no-website --no-registry       # chạy nhanh, bớt nguồn bổ sung
     python main.py --vietqr-backfill                # chỉ tra bù VietQR cho companies.csv (giai đoạn 2)
+    python main.py --vietqr-backfill --vietqr-free-proxies   # tra bù VietQR qua proxy miễn phí (swiftshadow)
 """
 
 import argparse
@@ -63,6 +64,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Cào xong thì dừng, không tự tra bù VietQR (giai đoạn 2)",
     )
+    argument_parser.add_argument(
+        "--vietqr-free-proxies",
+        action="store_true",
+        help="Tra VietQR xoay vòng qua proxy miễn phí lấy bằng swiftshadow (xem config.VIETQR_FREE_PROXIES)",
+    )
     argument_parser.add_argument("--no-directory-detail", action="store_true", help="Không đọc trang chi tiết doanhnghiep.me")
     argument_parser.add_argument("--no-registry", action="store_true", help="Không tra tratencongty.com (người đại diện pháp luật)")
     argument_parser.add_argument("--no-website", action="store_true", help="Không đọc website công ty")
@@ -106,6 +112,10 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
         max_companies=arguments.max_companies or config.MAX_COMPANIES,
         use_vietqr_tax_lookup=(config.USE_VIETQR_TAX_LOOKUP or arguments.vietqr) and not arguments.no_vietqr,
         vietqr_wait_if_rate_limited=config.VIETQR_WAIT_IF_RATE_LIMITED,
+        vietqr_free_proxies=config.VIETQR_FREE_PROXIES or arguments.vietqr_free_proxies,
+        vietqr_free_proxy_max=config.VIETQR_FREE_PROXY_MAX,
+        vietqr_free_proxy_min=config.VIETQR_FREE_PROXY_MIN,
+        vietqr_free_proxy_refresh_minutes=config.VIETQR_FREE_PROXY_REFRESH_MINUTES,
         doanhnghiep_me_fetch_detail=config.DOANHNGHIEP_ME_FETCH_DETAIL and not arguments.no_directory_detail,
         use_tratencongty=config.USE_TRATENCONGTY and not arguments.no_registry,
         tratencongty_fetch_detail=config.TRATENCONGTY_FETCH_DETAIL,

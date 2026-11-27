@@ -23,6 +23,8 @@ from lead_crawler.sources.company_website import CompanyWebsiteSource
 from lead_crawler.sources.doanhnghiep_me import DoanhNghiepMeSource
 from lead_crawler.sources.input_file import read_input_companies
 from lead_crawler.sources.tratencongty import TraTenCongTySource
+from lead_crawler.free_proxies import FreeProxyPool
+from lead_crawler.sources.vietqr import API_HOST as VIETQR_API_HOST
 from lead_crawler.sources.vietqr import VietQrSource
 from lead_crawler.storage import CsvStore
 from lead_crawler.text_utils import to_ascii_key
@@ -49,6 +51,11 @@ class Settings:
     max_companies: Optional[int] = None
     use_vietqr_tax_lookup: bool = True
     vietqr_wait_if_rate_limited: bool = False
+    # Tra VietQR xoay vòng qua proxy miễn phí (lấy bằng swiftshadow), bên cạnh IP máy chạy tool.
+    vietqr_free_proxies: bool = False
+    vietqr_free_proxy_max: int = 100
+    vietqr_free_proxy_min: int = 10
+    vietqr_free_proxy_refresh_minutes: int = 10
     doanhnghiep_me_fetch_detail: bool = True
     use_tratencongty: bool = True
     tratencongty_fetch_detail: bool = True
@@ -67,14 +74,34 @@ class Settings:
 
 def build_http_client(settings: Settings) -> HttpClient:
     """
-    Tạo HttpClient dùng chung cho mọi nguồn.
+    Tạo HttpClient dùng chung cho mọi nguồn; bật proxy miễn phí thì VietQR gọi xoay vòng qua các proxy đó.
     """
-    return HttpClient(
+    http_client = HttpClient(
         user_agent=settings.user_agent,
         default_delay_seconds=settings.website_delay_seconds,
         timeout_seconds=settings.request_timeout_seconds,
         max_retries=settings.max_retries,
     )
+    if settings.use_vietqr_tax_lookup and settings.vietqr_free_proxies:
+        free_proxy_pool = FreeProxyPool(
+            cache_folder=settings.output_dir / ".swiftshadow",
+            max_proxies=settings.vietqr_free_proxy_max,
+            refresh_seconds=settings.vietqr_free_proxy_refresh_minutes * 60,
+        )
+        http_client.set_proxy_supplier(
+            VIETQR_API_HOST,
+            free_proxy_pool.take_new_proxies,
+            settings.vietqr_free_proxy_min,
+        )
+        free_proxy_pool.start_fetch()
+        logger.info(
+            "VietQR: bật proxy miễn phí (swiftshadow), đang lấy proxy ở nền; còn dưới %d proxy dùng được "
+            "thì lấy thêm (tối đa %d phút / lần)",
+            settings.vietqr_free_proxy_min,
+            settings.vietqr_free_proxy_refresh_minutes,
+        )
+
+    return http_client
 
 
 def build_enrichment_sources(

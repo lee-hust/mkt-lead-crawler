@@ -19,7 +19,7 @@ Thu thập thông tin doanh nghiệp từ nhiều nguồn công khai. Mặc đ�
 |---|---|---|
 | **File đầu vào** (`input_template.csv`) | Danh sách MKT có sẵn | Tên, MST, website, email… do MKT cung cấp |
 | **doanhnghiep.me** | Tìm công ty theo địa bàn: tỉnh → quận/huyện → phường/xã (Hà Nội khoảng 580 trang, ~11.000 công ty); bổ sung chi tiết | **Tên, MST, SĐT, địa chỉ, ngành nghề chính, ngày thành lập, phường/quận, người đại diện**, tên viết tắt, ngành nghề đăng ký |
-| **VietQR** (dữ liệu Cục Thuế) | Tra theo MST | Tên pháp lý chuẩn, tên tiếng Anh, tên viết tắt, địa chỉ đăng ký thuế, **trạng thái hoạt động**. API miễn phí chỉ cho khoảng 25 lượt / 10 phút, nên tool chạy 2 giai đoạn (xem mục [Tốc độ](#tốc-độ)) |
+| **VietQR** (dữ liệu Cục Thuế) | Tra theo MST | Tên pháp lý chuẩn, tên tiếng Anh, tên viết tắt, địa chỉ đăng ký thuế, **trạng thái hoạt động**. API miễn phí giới hạn lượt theo IP (hiện khoảng 1 lượt / phút), nên tool chạy 2 giai đoạn, có thể bật proxy miễn phí (xem mục [Tốc độ](#tốc-độ)) |
 | **tratencongty.com** | Tìm theo tỉnh; tra theo MST/tên | **Trạng thái hoạt động** (khi VietQR không có), **người đại diện pháp luật**, loại hình DN, ngày cấp phép, ngày hoạt động, tên giao dịch, ngành nghề đăng ký (mã VSIC). Công ty mới thành lập vài ngày có thể chưa có trên site này |
 | **Website của chính công ty** | Bổ sung (khi có website hoặc email tên miền riêng) | Email, SĐT, **lãnh đạo (họ tên + chức vụ)**, MST ở chân trang, Facebook/LinkedIn/YouTube/TikTok/Zalo, mô tả website, nền tảng web, có bản tiếng Anh, có trang tuyển dụng |
 
@@ -110,7 +110,7 @@ python main.py --no-registry --no-website
 
 Mỗi site có khoảng nghỉ riêng: doanhnghiep.me và VietQR 2 giây, tratencongty 3 giây, website 1,5 giây. Khi bị báo quá tải (429), nguồn bổ sung được tạm bỏ qua đến hết thời gian site yêu cầu chờ, các nguồn khác vẫn chạy. Mỗi công ty tốn khoảng 2–8 giây tùy số nguồn có dữ liệu, tức khoảng **500–1.500 công ty/giờ**. Có thể để máy chạy qua đêm. Muốn nhanh hơn thì tắt bớt nguồn bổ sung (`--no-registry`, `--no-website`, `--no-directory-detail`). Không nên giảm khoảng nghỉ, vì dễ bị chặn.
 
-**VietQR chạy 2 giai đoạn** (mặc định). VietQR miễn phí chỉ cho khoảng 25 lượt / 10 phút, tức khoảng 150 công ty/giờ, chậm hơn hẳn các nguồn khác:
+**VietQR chạy 2 giai đoạn** (mặc định). VietQR miễn phí giới hạn lượt theo IP: trước đây khoảng 25 lượt / 10 phút (~150 công ty/giờ), từ 27/11/2026 Cloudflare đứng trước VietQR chỉ cho khoảng 1 lượt / phút (~60 công ty/giờ), chậm hơn hẳn các nguồn khác:
 
 | | Làm gì | Cấu hình |
 |---|---|---|
@@ -118,9 +118,23 @@ Mỗi site có khoảng nghỉ riêng: doanhnghiep.me và VietQR 2 giây, traten
 | **Giai đoạn 2** | Cào xong, tool tự tra bù VietQR cho công ty có MST mà chưa có "VietQR (Cục Thuế)" trong cột "Nguồn dữ liệu". Chờ đúng thời gian VietQR yêu cầu, cập nhật thẳng vào `companies.csv` (lưu khoảng 10 phút/lần) | `VIETQR_BACKFILL_AFTER_CRAWL = True` |
 
 - Chạy riêng giai đoạn 2 (vd. sau khi dừng giữa chừng): `python main.py --vietqr-backfill`. Dừng lúc nào cũng được, chạy lại sẽ tra tiếp phần còn thiếu.
+- Tiến độ giai đoạn 2 được in 5 phút một lần (dòng `Giai đoạn 2 - tiến độ: ...`): số công ty đã tra, tốc độ thực tế trung bình 15 phút gần nhất, thời gian còn lại và giờ dự kiến xong. Trên server: `docker logs mkt-crawler 2>&1 | grep "tiến độ" | tail -1`.
 - Cào xong thì dừng, không tra bù: `--no-vietqr-backfill`.
 - Chạy 1 giai đoạn như cũ (tra VietQR xong mới làm tiếp, cả tool đứng chờ khi hết lượt): `VIETQR_WAIT_IF_RATE_LIMITED = True`.
 - Trong lúc giai đoạn 2 chạy, tool đang giữ file nên không chạy giai đoạn 1 song song được (tool tự thoát với mã 2).
+
+**Tra VietQR qua proxy miễn phí (tùy chọn, mặc định tắt).** Bật bằng `--vietqr-free-proxies` (hoặc `VIETQR_FREE_PROXIES = True`):
+
+```bash
+python main.py --vietqr-backfill --vietqr-free-proxies
+```
+
+- Tool dùng thư viện [swiftshadow](https://github.com/sachin-sankar/swiftshadow) lấy proxy miễn phí từ các danh sách công khai (ProxyScrape, monosans, TheSpeedX, proxydb.net...), thử từng proxy với một trang HTTPS (api.ipify.org), rồi tra VietQR xoay vòng qua các proxy mở được HTTPS, cùng IP của máy chạy tool. Mỗi IP được khoảng 1 lượt / phút, nên có N proxy dùng được thì nhanh hơn khoảng N lần.
+- Việc lấy proxy chạy ở nền, tối đa 10 phút / lần. Trong lúc chờ, VietQR vẫn tra bằng IP máy chạy tool. Còn dưới 10 proxy dùng được thì tool tự lấy thêm.
+- Proxy lỗi kết nối 2 lần liên tiếp, đòi tài khoản hoặc bị VietQR trả 403 thì bị bỏ. IP máy chạy tool bị 403 mà còn proxy thì tool bỏ IP đó và tra tiếp bằng proxy.
+- Chỉ VietQR đi qua proxy; doanhnghiep.me, tratencongty, website công ty vẫn gọi trực tiếp.
+- Log có các dòng `swiftshadow: lấy được ... proxy`, `api.vietqr.io: thêm N proxy`, `bỏ proxy ...`.
+- **Rủi ro:** proxy miễn phí không rõ chủ (có thể là máy cấu hình sai hoặc bị chiếm quyền), hay chết, có thể đã bị VietQR chặn sẵn. VietQR chạy HTTPS nên proxy không đọc hay sửa được dữ liệu tra cứu. Nên hỏi IT trước khi bật trên server công ty. swiftshadow dùng giấy phép GPL-3.0, chỉ dùng nội bộ thì không ảnh hưởng.
 
 ## Dừng và chạy tiếp
 
@@ -225,7 +239,7 @@ Kết quả kiểm tra truy cập từ wifi công ty (20/11/2026):
 | hosocongty.vn, masocongty.vn, thongtindoanhnghiep.co, vinabiz.org | Không vào được từ mạng công ty (xem mục *Lưu ý về mạng*); chưa đánh giá được điều khoản |
 | OpenStreetMap (Overpass API) | Máy chủ chính bị proxy mạng công ty can thiệp; dữ liệu doanh nghiệp ở Việt Nam ít |
 
-Tool cố ý **không** vượt Cloudflare/CAPTCHA, không giả trình duyệt, không đọc dữ liệu site cố ý ẩn (email mã hóa, MST/SĐT dạng ảnh), không đoán email theo tên người, không cào LinkedIn/Facebook cá nhân. Tool luôn tuân thủ `robots.txt` và giãn cách request.
+Tool cố ý **không** vượt Cloudflare/CAPTCHA, không giả trình duyệt, không đọc dữ liệu site cố ý ẩn (email mã hóa, MST/SĐT dạng ảnh), không đoán email theo tên người, không cào LinkedIn/Facebook cá nhân. Tool luôn tuân thủ `robots.txt` và giãn cách request. Ngoại lệ duy nhất: khi bật `--vietqr-free-proxies`, tool xoay IP qua proxy miễn phí để vượt giới hạn lượt theo IP của VietQR. Mỗi proxy vẫn giữ khoảng nghỉ riêng, và proxy nào bị chặn (403) thì bị bỏ.
 
 ## Lưu ý khi dùng dữ liệu
 

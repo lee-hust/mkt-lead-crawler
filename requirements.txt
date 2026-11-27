@@ -1,3 +1,5 @@
 requests>=2.32
 beautifulsoup4>=4.12
 lxml>=6.0
+# proxy miễn phí cho VietQR (--vietqr-free-proxies); khóa phiên bản vì thư viện còn thay đổi
+swiftshadow==2.4.1

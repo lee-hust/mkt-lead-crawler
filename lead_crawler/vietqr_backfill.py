@@ -10,8 +10,13 @@ File được ghi lại định kỳ, nên dừng giữa chừng không mất ph
 import csv
 import logging
 import os
+import time
+from collections import deque
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
+from lead_crawler.http_client import HttpClient
 from lead_crawler.models import COMPANY_COLUMNS, CONTACT_COLUMNS, Company
 from lead_crawler.pipeline import Settings, build_http_client, fill_derived_fields
 from lead_crawler.sources.vietqr import API_HOST, VietQrSource
@@ -19,10 +24,79 @@ from lead_crawler.storage import CSV_ENCODING
 
 logger = logging.getLogger(__name__)
 
-# Ghi lại file sau mỗi bấy nhiêu công ty được cập nhật (~10 phút với giới hạn ~25 lượt / 10 phút của VietQR).
-SAVE_EVERY_UPDATES = 25
-# Thời gian trung bình mỗi lượt tra khi bị giới hạn ~25 lượt / 10 phút, dùng để ước tính thời gian còn lại.
-SECONDS_PER_LOOKUP = 24
+# Ghi lại file khoảng 10 phút một lần, hoặc sớm hơn khi đã cập nhật bấy nhiêu công ty chưa lưu.
+SAVE_INTERVAL_SECONDS = 600
+SAVE_MAX_UNSAVED = 500
+# Thời gian mỗi lượt tra của một IP, dùng để ước tính thời gian còn lại. Từ 27/11/2026 Cloudflare trước VietQR
+# chỉ cho mỗi IP khoảng 1 lượt / phút (trước đó ~25 lượt / 10 phút); có proxy thì chia cho số đường gọi.
+SECONDS_PER_LOOKUP = 60
+# Dù nhiều proxy, mỗi lượt vẫn mất ít nhất bấy nhiêu giây (tra lần lượt từng công ty).
+MIN_SECONDS_PER_LOOKUP = 1.5
+# In tiến độ (tốc độ thực tế, thời gian còn lại, giờ dự kiến xong) bấy nhiêu giây một lần.
+PROGRESS_LOG_SECONDS = 300
+# Tốc độ thực tế tính trung bình trong bấy nhiêu giây gần nhất (số proxy thay đổi liên tục).
+RATE_WINDOW_SECONDS = 15 * 60
+# Cần đo được ít nhất bấy nhiêu giây và bấy nhiêu lượt mới dùng tốc độ thực tế; chưa đủ thì ước tính theo số đường.
+MIN_MEASURE_SECONDS = 120
+MIN_MEASURE_LOOKUPS = 3
+
+
+class BackfillProgress:
+    """
+    Đo tốc độ tra bù thực tế (trung bình trong RATE_WINDOW_SECONDS gần nhất) để ước tính thời gian còn lại.
+    """
+
+    def __init__(self, total_count: int):
+        self.total_count = total_count
+        self.samples: deque[tuple[float, int]] = deque([(time.monotonic(), 0)])
+
+    def record(self, done_count: int) -> None:
+        """
+        Ghi nhận đã tra xong done_count công ty; bỏ các mốc cũ hơn cửa sổ đo.
+        """
+        now = time.monotonic()
+        self.samples.append((now, done_count))
+        while len(self.samples) > 2 and now - self.samples[1][0] >= RATE_WINDOW_SECONDS:
+            self.samples.popleft()
+
+    def measured_seconds_per_lookup(self) -> Optional[float]:
+        """
+        Số giây trung bình mỗi lượt tra theo đo thực tế; None nếu chưa đo đủ lâu.
+        """
+        first_time, first_count = self.samples[0]
+        last_time, last_count = self.samples[-1]
+        measured_lookups = last_count - first_count
+        measured_seconds = last_time - first_time
+        if measured_lookups < MIN_MEASURE_LOOKUPS or measured_seconds < MIN_MEASURE_SECONDS:
+            return None
+
+        return measured_seconds / measured_lookups
+
+    def describe(
+        self,
+        done_count: int,
+        http_client: HttpClient,
+    ) -> str:
+        """
+        Mô tả tiến độ: đã tra bao nhiêu, tốc độ, thời gian còn lại và giờ dự kiến xong.
+        """
+        seconds_per_lookup = self.measured_seconds_per_lookup()
+        speed_source = "đo thực tế 15 phút gần nhất"
+        if seconds_per_lookup is None:
+            seconds_per_lookup = estimate_seconds_per_lookup(http_client)
+            speed_source = "ước tính theo số đường gọi, chưa đủ số liệu đo"
+
+        remaining_count = self.total_count - done_count
+        remaining_seconds = remaining_count * seconds_per_lookup
+        finish_at = datetime.now() + timedelta(seconds=remaining_seconds)
+
+        return (
+            f"đã tra {done_count}/{self.total_count} ({done_count * 100 // max(self.total_count, 1)}%), "
+            f"tốc độ ~{3600 / seconds_per_lookup:.0f} công ty/giờ ({speed_source}), "
+            f"đang tra qua {http_client.count_proxy_routes(API_HOST)} proxy + IP máy; "
+            f"còn {remaining_count} công ty, khoảng {format_duration(remaining_seconds)}, "
+            f"xong khoảng {finish_at:%H:%M} ngày {finish_at:%d/%m}"
+        )
 
 
 def run_vietqr_backfill(settings: Settings) -> int:
@@ -44,13 +118,9 @@ def run_vietqr_backfill(settings: Settings) -> int:
 
     companies = [company_from_row(row) for row in rows]
     pending_companies = [company for company in companies if needs_vietqr(company)]
-    logger.info(
-        "=== Giai đoạn 2: tra bù VietQR cho %d / %d công ty (ước tính %s)",
-        len(pending_companies),
-        len(companies),
-        format_duration(len(pending_companies) * SECONDS_PER_LOOKUP),
-    )
     if not pending_companies:
+        logger.info("=== Giai đoạn 2: cả %d công ty đều không cần tra bù VietQR", len(companies))
+
         return 0
 
     http_client = build_http_client(settings)
@@ -60,10 +130,22 @@ def run_vietqr_backfill(settings: Settings) -> int:
         True,
         True,
     )
+    logger.info(
+        "=== Giai đoạn 2: tra bù VietQR cho %d / %d công ty (ước tính ban đầu %s theo số đường gọi hiện có; "
+        "tiến độ và giờ dự kiến xong theo tốc độ thực tế được in %d phút một lần)",
+        len(pending_companies),
+        len(companies),
+        format_duration(len(pending_companies) * estimate_seconds_per_lookup(http_client)),
+        PROGRESS_LOG_SECONDS // 60,
+    )
+
+    backfill_progress = BackfillProgress(len(pending_companies))
     changed_tax_codes: dict[str, str] = {}
     updated_count = 0
     not_found_count = 0
     unsaved_count = 0
+    last_save_time = time.monotonic()
+    last_progress_time = time.monotonic()
     try:
         for index, company in enumerate(pending_companies, start=1):
             if http_client.is_blocked(API_HOST):
@@ -104,15 +186,23 @@ def run_vietqr_backfill(settings: Settings) -> int:
                     old_tax_code,
                 )
 
-            if unsaved_count >= SAVE_EVERY_UPDATES:
+            backfill_progress.record(index)
+            if time.monotonic() - last_progress_time >= PROGRESS_LOG_SECONDS:
+                last_progress_time = time.monotonic()
+                logger.info(
+                    "Giai đoạn 2 - tiến độ: %s",
+                    backfill_progress.describe(
+                        index,
+                        http_client,
+                    ),
+                )
+
+            is_save_due = time.monotonic() - last_save_time >= SAVE_INTERVAL_SECONDS
+            if unsaved_count and (is_save_due or unsaved_count >= SAVE_MAX_UNSAVED):
+                last_save_time = time.monotonic()
                 if save_companies(companies_path, company_headers, companies):
                     unsaved_count = 0
-                    logger.info(
-                        "Giai đoạn 2: đã lưu vào %s (còn %d công ty, ước tính %s)",
-                        companies_path.name,
-                        len(pending_companies) - index,
-                        format_duration((len(pending_companies) - index) * SECONDS_PER_LOOKUP),
-                    )
+                    logger.info("Giai đoạn 2: đã lưu vào %s", companies_path.name)
     finally:
         if unsaved_count:
             save_companies(companies_path, company_headers, companies)
@@ -127,6 +217,15 @@ def run_vietqr_backfill(settings: Settings) -> int:
     )
 
     return updated_count
+
+
+def estimate_seconds_per_lookup(http_client: HttpClient) -> float:
+    """
+    Thời gian trung bình mỗi lượt tra: mỗi đường gọi (IP máy chạy tool, từng proxy) được ~1 lượt / SECONDS_PER_LOOKUP.
+    """
+    route_count = max(len(http_client.get_routes(API_HOST)), 1)
+
+    return max(SECONDS_PER_LOOKUP / route_count, MIN_SECONDS_PER_LOOKUP)
 
 
 def needs_vietqr(company: Company) -> bool:

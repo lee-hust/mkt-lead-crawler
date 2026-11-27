@@ -115,7 +115,7 @@ KEYWORDS: list[str] = []
 # VietQR (Cục Thuế): tên pháp lý chuẩn, tên tiếng Anh, địa chỉ đăng ký, trạng thái hoạt động (đang hoạt động / giải thể).
 # Khi VietQR đã cho trạng thái, tool bỏ qua tratencongty cho công ty đó (đỡ 2 request x 3 giây).
 USE_VIETQR_TAX_LOOKUP = True
-# API miễn phí chỉ cho ~25 lượt / 10 phút, hết lượt thì báo quá tải (429, bắt chờ vài phút).
+# API miễn phí giới hạn lượt theo IP (trước ~25 lượt / 10 phút, từ 27/11/2026 ~1 lượt / phút); hết lượt thì báo quá tải (429).
 # Mặc định chạy 2 giai đoạn:
 #   Giai đoạn 1 (VIETQR_WAIT_IF_RATE_LIMITED = False): cào mọi nguồn, VietQR còn lượt thì tra, hết lượt thì bỏ qua
 #               cho nhanh -> MKT sớm có SĐT, người đại diện... của mọi công ty.
@@ -125,6 +125,16 @@ USE_VIETQR_TAX_LOOKUP = True
 # Muốn chạy 1 giai đoạn như cũ (tra VietQR xong mới làm tiếp, chậm hơn): đặt VIETQR_WAIT_IF_RATE_LIMITED = True.
 VIETQR_WAIT_IF_RATE_LIMITED = False
 VIETQR_BACKFILL_AFTER_CRAWL = True
+# --- Proxy miễn phí cho VietQR (tùy chọn, MẶC ĐỊNH TẮT). Bật: VIETQR_FREE_PROXIES = True hoặc --vietqr-free-proxies.
+# Từ 27/11/2026 Cloudflare đứng trước VietQR chỉ cho mỗi IP khoảng 1 lượt / phút. Khi bật, tool dùng thư viện
+# swiftshadow lấy proxy miễn phí từ các danh sách công khai (ProxyScrape, monosans, TheSpeedX...), thử trước xem
+# proxy nào mở được HTTPS, rồi tra VietQR xoay vòng qua các proxy đó cùng IP máy chạy tool. Proxy chết / bị VietQR
+# chặn thì tự bỏ; còn ít hơn VIETQR_FREE_PROXY_MIN proxy thì tự lấy thêm. Các nguồn khác vẫn gọi trực tiếp.
+# Lưu ý: proxy miễn phí không rõ chủ, hay chết; nên hỏi IT trước khi bật trên server công ty.
+VIETQR_FREE_PROXIES = False
+VIETQR_FREE_PROXY_MAX = 100             # số proxy lấy về mỗi lần (trước khi thử HTTPS)
+VIETQR_FREE_PROXY_MIN = 10              # còn ít hơn bấy nhiêu proxy dùng được thì lấy thêm
+VIETQR_FREE_PROXY_REFRESH_MINUTES = 10  # không lấy proxy dày hơn bấy nhiêu phút một lần
 DOANHNGHIEP_ME_FETCH_DETAIL = True  # trang chi tiết doanhnghiep.me: người đại diện, tên viết tắt, ngành nghề đăng ký
 # tratencongty.com: TRẠNG THÁI HOẠT ĐỘNG (thay VietQR, không bị giới hạn lượt), người đại diện, loại hình,
 # ngày cấp phép, tên giao dịch, ngành nghề VSIC. Tra cả công ty đã đủ thông tin từ doanhnghiep.me nếu còn thiếu
