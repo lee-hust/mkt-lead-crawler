@@ -295,7 +295,7 @@ def estimate_seconds_per_lookup(
         seconds += 2 * settings.infodoanhnghiep_delay_seconds + INFO_REQUEST_SECONDS
 
     if settings.use_doanhnghiep_biz:
-        seconds += 2 * settings.doanhnghiep_biz_delay_seconds + INFO_REQUEST_SECONDS
+        seconds += settings.doanhnghiep_biz_delay_seconds + INFO_REQUEST_SECONDS  # 1 request (trang /<MST>)
 
     if seconds:
         return seconds

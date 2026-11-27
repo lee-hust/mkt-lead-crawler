@@ -9,7 +9,7 @@ Thu thập thông tin doanh nghiệp từ nguồn công khai theo tỉnh/thành 
 | File đầu vào (`input_template.csv`) | Danh sách MKT có sẵn | Tên, MST, website... |
 | VietQR (Cục Thuế) | Tra theo MST, **mặc định tắt** (bật bằng `--vietqr`) | Tên pháp lý, tên tiếng Anh, địa chỉ đăng ký, trạng thái. Giới hạn ~1 lượt / phút mỗi IP; API miễn phí dừng 31/12/2026 |
 | infodoanhnghiep.com | **Tìm công ty theo tỉnh mới** (công ty mới lên trước) + tra theo MST | Tên, MST, địa chỉ, ngày cấp; trạng thái người nộp thuế, cơ quan thuế, số lao động, ngành nghề VSIC, số chi nhánh |
-| doanhnghiep.biz | Tra theo MST | **Số điện thoại** (dạng chữ), người đại diện, tình trạng, loại hình. Email trên site bị Cloudflare mã hóa nên không lấy |
+| doanhnghiep.biz | Tra theo MST (mở thẳng trang `/<MST>`, 1 request mỗi công ty) | **Số điện thoại** (dạng chữ), người đại diện, tình trạng, loại hình. Email trên site bị Cloudflare mã hóa nên không lấy |
 | tratencongty.com | Tìm theo tỉnh; tra theo MST / tên | Người đại diện, loại hình, trạng thái, ngành nghề |
 | Website công ty | Khi có website | Email, SĐT, lãnh đạo, MST |
 

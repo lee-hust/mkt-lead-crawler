@@ -1,11 +1,10 @@
 """
-doanhnghiep.biz: tra theo MST (tìm kiếm -> trang công ty) lấy số điện thoại dạng chữ, người đại diện, tình trạng.
+doanhnghiep.biz: tra theo MST (trang /<MST>, 1 request) lấy số điện thoại dạng chữ, người đại diện, tình trạng.
 Email trên site bị Cloudflare mã hóa (chống thu thập) nên không lấy.
 """
 
 import logging
 import re
-from typing import Optional
 
 from lead_crawler.html_soup import make_soup
 from lead_crawler.http_client import HttpClient
@@ -17,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 HOST = "doanhnghiep.biz"
 BASE_URL = "https://doanhnghiep.biz"
-SEARCH_URL = BASE_URL + "/tim-kiem/?timkiem={tax_code}"
+# Đường dẫn chính thức (canonical) của trang công ty là /<MST>, không cần tìm kiếm trước.
+DETAIL_URL = BASE_URL + "/{tax_code}"
 LEGAL_REPRESENTATIVE_POSITION = "Người đại diện pháp luật"
 
 
@@ -50,7 +50,7 @@ class DoanhNghiepBizSource(EnrichmentSource):
 
     def enrich(self, company: Company) -> list[ContactPerson]:
         """
-        Tìm trang công ty theo MST rồi đọc bảng thông tin; bỏ qua nếu đã đủ SĐT, người đại diện, tình trạng.
+        Đọc trang công ty /<MST> (bảng thông tin); bỏ qua nếu đã đủ SĐT, người đại diện, tình trạng.
         """
         tax_code = re.sub(r"[^\d\-]", "", company.tax_code or "")
         if not tax_code or self.is_blocked():
@@ -59,10 +59,7 @@ class DoanhNghiepBizSource(EnrichmentSource):
         if company.phone and company.legal_representative and company.tax_status:
             return []
 
-        detail_url = company.doanhnghiep_biz_url or self._find_detail_url(tax_code)
-        if not detail_url:
-            return []
-
+        detail_url = company.doanhnghiep_biz_url or DETAIL_URL.format(tax_code=tax_code)
         detail_html = self.http_client.get_text(
             detail_url,
             wait_if_rate_limited=self.wait_if_rate_limited,
@@ -70,9 +67,9 @@ class DoanhNghiepBizSource(EnrichmentSource):
         if detail_html is None:
             return []
 
+        # MST chưa có trên site: trang vẫn mở được nhưng không có bảng thông tin của MST đó.
         values = parse_company_table(detail_html)
-        page_tax_code = re.sub(r"[^\d\-]", "", values.get("taxID", ""))
-        if page_tax_code and page_tax_code != tax_code:
+        if re.sub(r"[^\d\-]", "", values.get("taxID", "")) != tax_code:
             return []
 
         # MST lấy từ website có thể là của đơn vị khác, phải khớp tên mới nhận.
@@ -108,39 +105,6 @@ class DoanhNghiepBizSource(EnrichmentSource):
                 source_url=detail_url,
             )
         ]
-
-    def _find_detail_url(self, tax_code: str) -> Optional[str]:
-        """
-        Tìm theo MST, chỉ nhận link đúng MST đó (không nhận link chi nhánh của MST mẹ).
-        """
-        search_html = self.http_client.get_text(
-            SEARCH_URL.format(tax_code=tax_code),
-            wait_if_rate_limited=self.wait_if_rate_limited,
-        )
-        if search_html is None:
-            return None
-
-        return find_detail_url(
-            search_html,
-            tax_code,
-        )
-
-
-def find_detail_url(
-    search_html: str,
-    tax_code: str,
-) -> Optional[str]:
-    """
-    Link trang công ty có dạng /<MST>-<tên>; chi nhánh của MST mẹ có dạng /<MST>-<3 số>-<tên> nên bị bỏ.
-    """
-    prefix = f"/{tax_code}-"
-    branch_pattern = re.compile(rf"^/{re.escape(tax_code)}-\d{{3}}-")
-    for link in make_soup(search_html).find_all("a", href=True):
-        href = link["href"].replace(BASE_URL, "")
-        if href.startswith(prefix) and not branch_pattern.match(href):
-            return BASE_URL + href
-
-    return None
 
 
 def parse_company_table(detail_html: str) -> dict[str, str]:
