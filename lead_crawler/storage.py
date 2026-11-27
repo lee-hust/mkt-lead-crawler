@@ -95,26 +95,33 @@ def company_name_key(
 
 class CsvStore:
     """
-    Ghi nối tiếp companies.csv / contacts.csv (flush từng công ty), gộp trùng theo mã bản ghi, MST, tên + khu vực.
+    Ghi nối tiếp companies.csv (và contacts.csv nếu bật) từng công ty, gộp trùng theo mã bản ghi, MST, tên + khu vực.
     """
 
-    def __init__(self, output_dir: Path):
+    def __init__(
+        self,
+        output_dir: Path,
+        write_contacts_file: bool = False,
+    ):
         output_dir.mkdir(parents=True, exist_ok=True)
         self.seen_record_ids: set[str] = set()
         self.seen_tax_codes: set[str] = set()
         self.seen_name_keys: set[str] = set()
         company_headers = [header for _, header in COMPANY_COLUMNS]
-        contact_headers = [header for _, header in CONTACT_COLUMNS]
         self.companies_file, self.companies_writer = self._open(
             output_dir / "companies.csv",
             company_headers,
             True,
         )
-        self.contacts_file, self.contacts_writer = self._open(
-            output_dir / "contacts.csv",
-            contact_headers,
-            False,
-        )
+        self.contacts_file = None
+        self.contacts_writer = None
+        if write_contacts_file:
+            contact_headers = [header for _, header in CONTACT_COLUMNS]
+            self.contacts_file, self.contacts_writer = self._open(
+                output_dir / "contacts.csv",
+                contact_headers,
+                False,
+            )
 
     def is_known(self, company: Company) -> bool:
         """
@@ -161,14 +168,16 @@ class CsvStore:
         contact_persons: list[ContactPerson],
     ) -> None:
         """
-        Ghi một công ty và các người liên hệ của nó.
+        Ghi một công ty (người liên hệ đã gộp vào cột Liên hệ & chức vụ) và contacts.csv nếu bật.
         """
         self.companies_writer.writerow(company.to_csv_row())
-        for contact_person in contact_persons:
-            self.contacts_writer.writerow(contact_person.to_csv_row())
-
         self.companies_file.flush()
-        self.contacts_file.flush()
+        if self.contacts_writer is not None:
+            for contact_person in contact_persons:
+                self.contacts_writer.writerow(contact_person.to_csv_row())
+
+            self.contacts_file.flush()
+
         self.remember(company)
 
     def close(self) -> None:
@@ -176,7 +185,8 @@ class CsvStore:
         Đóng file.
         """
         self.companies_file.close()
-        self.contacts_file.close()
+        if self.contacts_file is not None:
+            self.contacts_file.close()
 
     def _open(
         self,

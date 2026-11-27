@@ -84,3 +84,6 @@ USER_AGENT = "Mozilla/5.0 (compatible; MktLeadCrawler/1.0)"
 
 # Thư mục kết quả (tương đối so với thư mục dự án).
 OUTPUT_DIR = "output"
+# Chỉ ghi companies.csv (người liên hệ gộp ở cột Liên hệ & chức vụ). True / --contacts-file: ghi thêm contacts.csv
+# (mỗi dòng một người), có ích khi dùng --input có website (nhiều người, SĐT / email riêng).
+WRITE_CONTACTS_FILE = False

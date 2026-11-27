@@ -18,7 +18,7 @@ Thứ tự bổ sung: infodoanhnghiep → doanhnghiep.biz → tratencongty → w
 ## Kết quả
 
 - `output/companies.csv`: mỗi dòng một công ty (37 cột).
-- `output/contacts.csv`: mỗi dòng một người liên hệ (họ tên, chức vụ, SĐT, nguồn), nối với công ty qua *Mã bản ghi*.
+- Người liên hệ gộp trong cột *Liên hệ & chức vụ* (vd. `Người đại diện pháp luật: Nguyễn Văn A`). Cần mỗi dòng một người thì bật `--contacts-file` (hoặc `WRITE_CONTACTS_FILE = True`) để ghi thêm `output/contacts.csv`, nối với công ty qua *Mã bản ghi*.
 - `output/crawl.log`: nhật ký chạy.
 
 File là UTF-8 có BOM, mở thẳng bằng Excel. Khi bản mới thêm / bỏ cột, file cũ tự được nâng cấp lúc chạy (giữ dữ liệu theo tên cột, bản gốc lưu thành `companies_truoc_nang_cap_<thời gian>.csv`).
@@ -99,7 +99,7 @@ docker stop -t 60 mkt-crawler; docker rm mkt-crawler; docker run -d --name mkt-c
 Xem log: `docker logs --tail 20 mkt-crawler`. Lấy kết quả về máy:
 
 ```bash
-scp root@IP_SERVER:/opt/mkt-lead-crawler/output/companies.csv root@IP_SERVER:/opt/mkt-lead-crawler/output/contacts.csv /d/mkt-lead-crawler/output_server/
+scp root@IP_SERVER:/opt/mkt-lead-crawler/output/companies.csv /d/mkt-lead-crawler/output_server/
 ```
 
 Tool tự khóa thư mục output (không chạy chồng), dừng an toàn khi `docker stop`, log tự xoay vòng (5 file x 10 MB).

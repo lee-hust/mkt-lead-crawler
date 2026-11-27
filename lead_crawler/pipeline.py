@@ -75,6 +75,8 @@ class Settings:
     max_retries: int = 3
     user_agent: str = "Mozilla/5.0 (compatible; MktLeadCrawler/1.0)"
     output_dir: Path = Path("output")
+    # Ghi thêm contacts.csv (mỗi dòng một người liên hệ); tắt thì chỉ có cột Liên hệ & chức vụ trong companies.csv.
+    write_contacts_file: bool = False
 
 
 def build_http_client(settings: Settings) -> HttpClient:
@@ -378,7 +380,10 @@ def run_crawl(settings: Settings) -> int:
         ", ".join(settings.keywords) or "không lọc",
     )
 
-    csv_store = CsvStore(settings.output_dir)
+    csv_store = CsvStore(
+        settings.output_dir,
+        settings.write_contacts_file,
+    )
     written_count = 0
     try:
         companies = iter_discovered_companies(

@@ -61,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     argument_parser.add_argument("--no-registry", action="store_true", help="Không tra tratencongty.com (người đại diện pháp luật)")
     argument_parser.add_argument("--no-website", action="store_true", help="Không đọc website công ty")
     argument_parser.add_argument("--output", help="Thư mục kết quả")
+    argument_parser.add_argument("--contacts-file", action="store_true", help="Ghi thêm contacts.csv (mỗi dòng một người liên hệ)")
 
     return argument_parser.parse_args()
 
@@ -131,6 +132,7 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
         max_retries=config.MAX_RETRIES,
         user_agent=config.USER_AGENT,
         output_dir=output_dir,
+        write_contacts_file=config.WRITE_CONTACTS_FILE or arguments.contacts_file,
     )
 
 
@@ -230,9 +232,9 @@ def main() -> int:
         return 130
 
     logger.info(
-        "Xong. Kết quả: %s và %s",
+        "Xong. Kết quả: %s%s",
         settings.output_dir / "companies.csv",
-        settings.output_dir / "contacts.csv",
+        f" và {settings.output_dir / 'contacts.csv'}" if settings.write_contacts_file else "",
     )
 
     return 0
