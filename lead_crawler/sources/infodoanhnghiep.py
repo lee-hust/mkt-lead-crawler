@@ -1,10 +1,13 @@
 """
-infodoanhnghiep.com: tra theo MST (tìm kiếm -> trang chi tiết) lấy dữ liệu thuế, số lao động, ngành nghề.
-Không lấy số tài khoản ngân hàng.
+infodoanhnghiep.com: tìm công ty theo tỉnh/thành (địa giới mới, công ty mới lên trước) và tra theo MST
+(tìm kiếm -> trang chi tiết) lấy dữ liệu thuế, số lao động, ngành nghề. Không lấy số tài khoản ngân hàng.
 """
 
+import itertools
 import logging
 import re
+from collections.abc import Iterator
+from datetime import date
 from typing import Optional
 
 from lead_crawler.html_soup import make_soup
@@ -24,6 +27,8 @@ INDUSTRY_HEADING = "nganh-nghe-kinh-doanh"
 MAIN_INDUSTRY_MARK = "(Ngành chính)"
 MAX_INDUSTRIES = 100
 BRANCH_COUNT_PATTERN = re.compile(r"có\s+([\d.,]+)\s+chi nhánh", re.IGNORECASE)
+DATE_PATTERN = re.compile(r"\d{2}/\d{2}/\d{4}")
+TAX_CODE_SOURCE_INFODOANHNGHIEP = "infodoanhnghiep.com"
 
 
 class InfoDoanhNghiepSource(EnrichmentSource):
@@ -57,6 +62,53 @@ class InfoDoanhNghiepSource(EnrichmentSource):
         Site đã từ chối truy cập trong lần chạy này chưa.
         """
         return self.http_client.is_blocked(HOST)
+
+    def iter_companies(
+        self,
+        cities: dict[str, list[str]],
+        province_paths: dict[str, str],
+        max_pages: Optional[int],
+    ) -> Iterator[Company]:
+        """
+        Duyệt danh sách công ty của từng tỉnh/thành (/<tỉnh>/, /<tỉnh>/trang-N/), mỗi trang 20 công ty,
+        tối đa max_pages trang mỗi tỉnh (None = không giới hạn). Dừng tỉnh khi gặp trang trống hoặc toàn công ty đã gặp.
+        """
+        for city_name in cities:
+            province_path = province_paths.get(city_name)
+            if not province_path:
+                logger.warning("%s: chưa có đường dẫn tỉnh cho %s (thêm vào config.ALL_CITIES)", self.name, city_name)
+                continue
+
+            seen_tax_codes: set[str] = set()
+            page_numbers = itertools.count(1) if max_pages is None else range(1, max_pages + 1)
+            for page_number in page_numbers:
+                page_url = f"{BASE_URL}/{province_path}/" + (f"trang-{page_number}/" if page_number > 1 else "")
+                page_html = self.http_client.get_text(
+                    page_url,
+                    wait_if_rate_limited=True,
+                )
+                if page_html is None:
+                    if self.is_blocked():
+                        return
+
+                    break
+
+                listing_items = [
+                    listing_item
+                    for listing_item in parse_listing_page(page_html)
+                    if listing_item["tax_code"] not in seen_tax_codes
+                ]
+                if not listing_items:
+                    logger.info("[%s] %s trang %d không có công ty mới, dừng tỉnh này", self.name, city_name, page_number)
+                    break
+
+                seen_tax_codes.update(listing_item["tax_code"] for listing_item in listing_items)
+                logger.info("[%s] %s trang %d: %d công ty", self.name, city_name, page_number, len(listing_items))
+                for listing_item in listing_items:
+                    yield company_from_listing(
+                        listing_item,
+                        city_name,
+                    )
 
     def enrich(self, company: Company) -> list[ContactPerson]:
         """
@@ -173,6 +225,62 @@ class InfoPage:
         self.industries = industries
         self.main_industry = main_industry
         self.branch_count = branch_count
+
+
+def parse_listing_page(page_html: str) -> list[dict[str, str]]:
+    """
+    Đọc các khối công ty của trang danh sách: [{"name", "url", "tax_code", "license_date", "address"}].
+    """
+    listing_items = []
+    for company_item in make_soup(page_html).select("div.company-item"):
+        link = company_item.select_one("h3.company-name a[href]")
+        item_text = clean_text(company_item.get_text(" "))
+        tax_code_match = re.search(r"Mã số thuế:\s*([\d\-]+)", item_text)
+        if link is None or tax_code_match is None:
+            continue
+
+        address_match = re.search(r"Địa chỉ:\s*(.+)$", item_text)
+        date_match = DATE_PATTERN.search(item_text)
+        listing_items.append(
+            {
+                "name": clean_text(link.get_text(" ")),
+                "url": absolute_url(link["href"]),
+                "tax_code": tax_code_match.group(1),
+                "license_date": date_match.group(0) if date_match else "",
+                "address": clean_text(address_match.group(1)) if address_match else "",
+            }
+        )
+
+    return listing_items
+
+
+def company_from_listing(
+    listing_item: dict[str, str],
+    city_name: str,
+) -> Company:
+    """
+    Tạo Company từ một dòng trong danh sách theo tỉnh.
+    """
+    license_date = listing_item["license_date"]
+
+    return Company(
+        record_id=f"info:{listing_item['tax_code']}",
+        discovered_by=InfoDoanhNghiepSource.name,
+        company_name=listing_item["name"],
+        legal_name=listing_item["name"],
+        tax_code=listing_item["tax_code"],
+        tax_code_source=TAX_CODE_SOURCE_INFODOANHNGHIEP,
+        address=listing_item["address"],
+        registered_address=listing_item["address"],
+        license_date=license_date,
+        founded_year=license_date[-4:] if license_date else "",
+        city=city_name,
+        target_city=city_name,
+        matched_by="Danh sách theo tỉnh (địa giới mới)",
+        search_category="Danh sách doanh nghiệp theo tỉnh (infodoanhnghiep)",
+        infodoanhnghiep_url=listing_item["url"],
+        crawled_at=date.today().isoformat(),
+    )
 
 
 def find_detail_url(

@@ -14,7 +14,7 @@ from lead_crawler.html_soup import make_soup
 
 from lead_crawler.http_client import HttpClient
 from lead_crawler.models import CONTACT_TYPE_PERSON, Company, ContactPerson
-from lead_crawler.provinces import CENTRAL_CITY_SLUGS, find_province_slug
+from lead_crawler.provinces import CENTRAL_CITY_SLUGS, PROVINCE_SLUGS
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.text_utils import (
     LEGAL_NAME_MARKERS,
@@ -156,38 +156,40 @@ class TraTenCongTySource(EnrichmentSource):
         Duyệt danh sách công ty theo tỉnh (mới đăng ký xếp trước).
         """
         for city_name, city_keys in cities.items():
-            province_path = province_list_path(city_keys)
-            if province_path is None:
+            province_paths = province_list_paths(city_keys)
+            if not province_paths:
                 logger.warning("%s: chưa có đường dẫn danh sách cho %s", self.name, city_name)
                 continue
 
-            seen_urls: set[str] = set()
-            page_numbers = itertools.count(1) if max_pages is None else range(1, max_pages + 1)
-            for page_number in page_numbers:
-                page_url = f"{BASE_URL}{province_path}?page={page_number}"
-                page_html = self.http_client.get_text(
-                    page_url,
-                    wait_if_rate_limited=True,
-                )
-                if page_html is None:
-                    break
-
-                result_blocks = [result for result in parse_result_blocks(page_html) if result["url"] not in seen_urls]
-                if not result_blocks:
-                    # Trang trống hoặc lặp lại nội dung trang trước (phân trang hỏng): dừng, tránh vòng lặp vô ích.
-                    logger.info("[%s] %s trang %d không có công ty mới, dừng tỉnh này", self.name, city_name, page_number)
-                    break
-
-                seen_urls.update(result["url"] for result in result_blocks)
-                logger.info("[%s] %s trang %d: %d công ty", self.name, city_name, page_number, len(result_blocks))
-                for result in result_blocks:
-                    yield company_from_result(
-                        result,
-                        city_name,
+            # Một tỉnh/TP mới có thể gồm nhiều tỉnh cũ (site vẫn chia theo 63 tỉnh cũ): duyệt lần lượt từng tỉnh cũ.
+            for province_path in province_paths:
+                seen_urls: set[str] = set()
+                page_numbers = itertools.count(1) if max_pages is None else range(1, max_pages + 1)
+                for page_number in page_numbers:
+                    page_url = f"{BASE_URL}{province_path}?page={page_number}"
+                    page_html = self.http_client.get_text(
+                        page_url,
+                        wait_if_rate_limited=True,
                     )
+                    if page_html is None:
+                        break
 
-                if self.is_blocked():
-                    return
+                    result_blocks = [result for result in parse_result_blocks(page_html) if result["url"] not in seen_urls]
+                    if not result_blocks:
+                        # Trang trống hoặc lặp lại nội dung trang trước (phân trang hỏng): dừng, tránh vòng lặp vô ích.
+                        logger.info("[%s] %s trang %d không có công ty mới, dừng", self.name, province_path, page_number)
+                        break
+
+                    seen_urls.update(result["url"] for result in result_blocks)
+                    logger.info("[%s] %s %s trang %d: %d công ty", self.name, city_name, province_path, page_number, len(result_blocks))
+                    for result in result_blocks:
+                        yield company_from_result(
+                            result,
+                            city_name,
+                        )
+
+                    if self.is_blocked():
+                        return
 
 
 def company_from_result(
@@ -303,17 +305,17 @@ def filter_results_by_name(
     return matching_results
 
 
-def province_list_path(city_keys: list[str]) -> Optional[str]:
+def province_list_paths(city_keys: list[str]) -> list[str]:
     """
-    Đường dẫn trang danh sách công ty của tỉnh/thành, ví dụ /thanh-pho-ha-noi/, /tinh-ha-nam/.
+    Đường dẫn danh sách công ty của các tỉnh cũ trong từ khóa, vd. /thanh-pho-ha-noi/, /tinh-binh-duong/.
     """
-    province_slug = find_province_slug(city_keys)
-    if province_slug is None:
-        return None
+    paths = []
+    for city_key in city_keys:
+        if city_key in PROVINCE_SLUGS:
+            prefix = "thanh-pho" if city_key in CENTRAL_CITY_SLUGS else "tinh"
+            paths.append(f"/{prefix}-{city_key}/")
 
-    prefix = "thanh-pho" if province_slug in CENTRAL_CITY_SLUGS else "tinh"
-
-    return f"/{prefix}-{province_slug}/"
+    return paths
 
 
 def filter_by_city(

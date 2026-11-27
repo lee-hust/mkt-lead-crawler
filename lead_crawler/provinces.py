@@ -1,8 +1,6 @@
 """
-Slug tỉnh/thành của doanhnghiep.me và tratencongty.com (63 tỉnh/thành cũ).
+Slug 63 tỉnh/thành cũ của tratencongty.com (site chưa cập nhật sáp nhập 7/2025).
 """
-
-from typing import Optional
 
 PROVINCE_SLUGS = frozenset(
     {
@@ -20,11 +18,3 @@ PROVINCE_SLUGS = frozenset(
 
 # Thành phố trực thuộc trung ương: tratencongty.com dùng tiền tố "thanh-pho-" thay vì "tinh-".
 CENTRAL_CITY_SLUGS = frozenset({"ha-noi", "ho-chi-minh", "da-nang", "hai-phong", "can-tho"})
-
-
-def find_province_slug(city_keys: list[str]) -> Optional[str]:
-    """
-    Lấy slug tỉnh/thành từ danh sách từ khóa của một khu vực (config.ALL_CITIES); không có thì trả về None.
-    """
-
-    return next((city_key for city_key in city_keys if city_key in PROVINCE_SLUGS), None)

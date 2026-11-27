@@ -15,7 +15,6 @@ from lead_crawler.models import Company, ContactPerson
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.sources.company_website import CompanyWebsiteSource
 from lead_crawler.sources.doanhnghiep_biz import DoanhNghiepBizSource
-from lead_crawler.sources.doanhnghiep_me import DoanhNghiepMeSource
 from lead_crawler.sources.infodoanhnghiep import InfoDoanhNghiepSource
 from lead_crawler.sources.input_file import read_input_companies
 from lead_crawler.sources.tratencongty import TraTenCongTySource
@@ -27,9 +26,9 @@ from lead_crawler.text_utils import to_ascii_key
 
 logger = logging.getLogger(__name__)
 
-DISCOVERY_DOANHNGHIEP_ME = "doanhnghiep_me"
+DISCOVERY_INFODOANHNGHIEP = "infodoanhnghiep"
 DISCOVERY_TRATENCONGTY = "tratencongty"
-ALL_DISCOVERY_SOURCES = [DISCOVERY_DOANHNGHIEP_ME, DISCOVERY_TRATENCONGTY]
+ALL_DISCOVERY_SOURCES = [DISCOVERY_INFODOANHNGHIEP, DISCOVERY_TRATENCONGTY]
 
 
 @dataclass
@@ -39,6 +38,9 @@ class Settings:
     """
 
     cities: dict[str, list[str]]
+    # Đường dẫn tỉnh trên infodoanhnghiep.com (vd. "Ha-Noi") và từ khóa của mọi tỉnh trong config (đổi tên tỉnh cũ).
+    infodoanhnghiep_paths: dict[str, str] = field(default_factory=dict)
+    all_cities: dict[str, list[str]] = field(default_factory=dict)
     discovery_sources: list[str] = field(default_factory=lambda: list(ALL_DISCOVERY_SOURCES))
     input_file: Optional[Path] = None
     directory_max_pages_per_city: Optional[int] = None
@@ -58,13 +60,11 @@ class Settings:
     # doanhnghiep.biz: số điện thoại dạng chữ, người đại diện, tình trạng.
     use_doanhnghiep_biz: bool = True
     doanhnghiep_biz_delay_seconds: float = 2
-    doanhnghiep_me_fetch_detail: bool = True
     use_tratencongty: bool = True
     tratencongty_fetch_detail: bool = True
     tratencongty_search_by_name: bool = True
     enrich_from_website: bool = True
     vietqr_delay_seconds: float = 2
-    doanhnghiep_me_delay_seconds: float = 2
     tratencongty_delay_seconds: float = 3
     website_delay_seconds: float = 1.5
     website_max_pages: int = 10
@@ -109,12 +109,10 @@ def build_http_client(settings: Settings) -> HttpClient:
 def build_enrichment_sources(
     settings: Settings,
     http_client: HttpClient,
-    doanh_nghiep_me_source: DoanhNghiepMeSource,
     tra_ten_cong_ty_source: TraTenCongTySource,
 ) -> list[EnrichmentSource]:
     """
-    Nguồn bổ sung theo thứ tự: VietQR -> infodoanhnghiep -> doanhnghiep.me chi tiết -> doanhnghiep.biz
-    -> tratencongty -> website.
+    Nguồn bổ sung theo thứ tự: VietQR -> infodoanhnghiep -> doanhnghiep.biz -> tratencongty -> website.
     """
     enrichment_sources: list[EnrichmentSource] = []
     if settings.use_vietqr_tax_lookup:
@@ -134,9 +132,6 @@ def build_enrichment_sources(
                 False,
             )
         )
-
-    if settings.doanhnghiep_me_fetch_detail:
-        enrichment_sources.append(doanh_nghiep_me_source)
 
     if settings.use_doanhnghiep_biz:
         enrichment_sources.append(
@@ -167,11 +162,11 @@ def build_enrichment_sources(
 
 def iter_discovered_companies(
     settings: Settings,
-    doanh_nghiep_me_source: DoanhNghiepMeSource,
+    info_doanh_nghiep_source: InfoDoanhNghiepSource,
     tra_ten_cong_ty_source: TraTenCongTySource,
 ) -> Iterator[Company]:
     """
-    Nối các nguồn đầu vào: file MKT -> doanhnghiep.me -> tratencongty; nguồn lỗi thì bỏ qua.
+    Nối các nguồn đầu vào: file MKT -> infodoanhnghiep -> tratencongty; nguồn lỗi thì bỏ qua.
     """
     if settings.input_file:
         logger.info("=== Nguồn đầu vào: file %s", settings.input_file)
@@ -180,10 +175,11 @@ def iter_discovered_companies(
             settings.cities,
         )
 
-    if DISCOVERY_DOANHNGHIEP_ME in settings.discovery_sources:
-        logger.info("=== Nguồn đầu vào: doanhnghiep.me (danh sách theo tỉnh)")
-        yield from doanh_nghiep_me_source.iter_companies(
+    if DISCOVERY_INFODOANHNGHIEP in settings.discovery_sources:
+        logger.info("=== Nguồn đầu vào: infodoanhnghiep.com (danh sách theo tỉnh, địa giới mới)")
+        yield from info_doanh_nghiep_source.iter_companies(
             settings.cities,
+            settings.infodoanhnghiep_paths,
             settings.directory_max_pages_per_city,
         )
 
@@ -344,7 +340,7 @@ def is_keyword_filtered(company: Company) -> bool:
     """
     Bộ lọc từ khóa chỉ áp dụng cho công ty tự tìm thấy, không lọc danh sách MKT tự đưa vào.
     """
-    return company.discovered_by in (DoanhNghiepMeSource.name, TraTenCongTySource.name)
+    return company.discovered_by in (InfoDoanhNghiepSource.name, TraTenCongTySource.name)
 
 
 def run_crawl(settings: Settings) -> int:
@@ -352,10 +348,10 @@ def run_crawl(settings: Settings) -> int:
     Chạy toàn bộ quy trình; trả về số công ty mới ghi được.
     """
     http_client = build_http_client(settings)
-    doanh_nghiep_me_source = DoanhNghiepMeSource(
+    info_doanh_nghiep_source = InfoDoanhNghiepSource(
         http_client,
-        settings.doanhnghiep_me_delay_seconds,
-        settings.doanhnghiep_me_fetch_detail,
+        settings.infodoanhnghiep_delay_seconds,
+        False,
     )
     tra_ten_cong_ty_source = TraTenCongTySource(
         http_client,
@@ -367,7 +363,6 @@ def run_crawl(settings: Settings) -> int:
     enrichment_sources = build_enrichment_sources(
         settings,
         http_client,
-        doanh_nghiep_me_source,
         tra_ten_cong_ty_source,
     )
     logger.info(
@@ -383,17 +378,11 @@ def run_crawl(settings: Settings) -> int:
     try:
         companies = iter_discovered_companies(
             settings,
-            doanh_nghiep_me_source,
+            info_doanh_nghiep_source,
             tra_ten_cong_ty_source,
         )
         for company in companies:
             if csv_store.is_known(company):
-                continue
-
-            # doanhnghiep.me đã có ngành nghề ngay ở danh sách: lọc từ khóa trước để khỏi tốn request.
-            has_listing_industry = company.discovered_by == DoanhNghiepMeSource.name
-            if has_listing_industry and is_keyword_filtered(company) and not matches_keywords(company, settings.keywords):
-                csv_store.remember(company)
                 continue
 
             contact_persons = enrich_company(

@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     argument_parser.add_argument(
         "--cities",
         nargs="+",
-        help='Khu vực trong config.ALL_CITIES, ví dụ: "Hà Nội" "Hải Phòng"; "all" = cả 63 tỉnh/thành',
+        help='Tỉnh/TP (địa giới mới) trong config.ALL_CITIES, vd. "Hà Nội" "Cần Thơ"; "all" = mọi tỉnh trong ALL_CITIES',
     )
     argument_parser.add_argument("--input", help="File CSV danh sách công ty có sẵn (xem input_template.csv)")
     argument_parser.add_argument(
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
         help="Nguồn tự tìm công ty; để trống sau --sources = không tự tìm (chỉ dùng --input)",
     )
     argument_parser.add_argument("--keywords", nargs="+", help="Từ khóa ngành nghề để lọc công ty tự tìm thấy")
-    argument_parser.add_argument("--directory-pages", type=int, help="Số trang địa bàn doanhnghiep.me tối đa mỗi tỉnh")
+    argument_parser.add_argument("--directory-pages", type=int, help="Số trang danh sách infodoanhnghiep tối đa mỗi tỉnh")
     argument_parser.add_argument("--registry-pages", type=int, help="Số trang tratencongty tối đa mỗi tỉnh")
     argument_parser.add_argument("--max-companies", type=int, help="Dừng sau N doanh nghiệp")
     argument_parser.add_argument("--vietqr", action="store_true", help="Bật tra MST qua VietQR (trạng thái hoạt động, tên pháp lý)")
@@ -58,7 +58,6 @@ def parse_args() -> argparse.Namespace:
     )
     argument_parser.add_argument("--no-infodoanhnghiep", action="store_true", help="Không tra infodoanhnghiep.com")
     argument_parser.add_argument("--no-doanhnghiep-biz", action="store_true", help="Không tra doanhnghiep.biz (số điện thoại)")
-    argument_parser.add_argument("--no-directory-detail", action="store_true", help="Không đọc trang chi tiết doanhnghiep.me")
     argument_parser.add_argument("--no-registry", action="store_true", help="Không tra tratencongty.com (người đại diện pháp luật)")
     argument_parser.add_argument("--no-website", action="store_true", help="Không đọc website công ty")
     argument_parser.add_argument("--output", help="Thư mục kết quả")
@@ -78,7 +77,9 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
     if unknown_cities:
         sys.exit(f"Khu vực không có trong config.ALL_CITIES (kiểm tra lại chính tả, có dấu): {unknown_cities}")
 
-    cities = {city: config.ALL_CITIES[city] for city in selected_cities}
+    cities = {city: config.ALL_CITIES[city]["keys"] for city in selected_cities}
+    infodoanhnghiep_paths = {city: config.ALL_CITIES[city]["infodoanhnghiep"] for city in selected_cities}
+    all_cities = {city: city_config["keys"] for city, city_config in config.ALL_CITIES.items()}
 
     output_dir = Path(arguments.output or config.OUTPUT_DIR)
     if not output_dir.is_absolute():
@@ -93,6 +94,8 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
 
     return Settings(
         cities=cities,
+        infodoanhnghiep_paths=infodoanhnghiep_paths,
+        all_cities=all_cities,
         discovery_sources=list(discovery_sources),
         input_file=input_file,
         directory_max_pages_per_city=arguments.directory_pages or config.DIRECTORY_MAX_PAGES_PER_CITY,
@@ -109,13 +112,11 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
         infodoanhnghiep_delay_seconds=config.INFODOANHNGHIEP_DELAY_SECONDS,
         use_doanhnghiep_biz=config.USE_DOANHNGHIEP_BIZ and not arguments.no_doanhnghiep_biz,
         doanhnghiep_biz_delay_seconds=config.DOANHNGHIEP_BIZ_DELAY_SECONDS,
-        doanhnghiep_me_fetch_detail=config.DOANHNGHIEP_ME_FETCH_DETAIL and not arguments.no_directory_detail,
         use_tratencongty=config.USE_TRATENCONGTY and not arguments.no_registry,
         tratencongty_fetch_detail=config.TRATENCONGTY_FETCH_DETAIL,
         tratencongty_search_by_name=config.TRATENCONGTY_SEARCH_BY_NAME,
         enrich_from_website=config.ENRICH_FROM_WEBSITE and not arguments.no_website,
         vietqr_delay_seconds=config.VIETQR_DELAY_SECONDS,
-        doanhnghiep_me_delay_seconds=config.DOANHNGHIEP_ME_DELAY_SECONDS,
         tratencongty_delay_seconds=config.TRATENCONGTY_DELAY_SECONDS,
         website_delay_seconds=config.WEBSITE_DELAY_SECONDS,
         website_max_pages=config.WEBSITE_MAX_PAGES,
@@ -203,7 +204,8 @@ def main() -> int:
 
         return 2
 
-    run_backfill = (settings.use_vietqr_tax_lookup or settings.use_infodoanhnghiep) and (
+    any_backfill_source = settings.use_vietqr_tax_lookup or settings.use_infodoanhnghiep or settings.use_doanhnghiep_biz
+    run_backfill = any_backfill_source and (
         arguments.vietqr_backfill or (config.VIETQR_BACKFILL_AFTER_CRAWL and not arguments.no_vietqr_backfill)
     )
     try:
@@ -214,7 +216,7 @@ def main() -> int:
         if run_backfill:
             run_vietqr_backfill(settings)
         elif arguments.vietqr_backfill:
-            logger.warning("VietQR và infodoanhnghiep đều đang tắt, không tra bù.")
+            logger.warning("VietQR, infodoanhnghiep và doanhnghiep.biz đều đang tắt, không tra bù.")
     except KeyboardInterrupt:
         logger.warning("Đã dừng. Chạy lại để tiếp tục từ chỗ dừng.")
 

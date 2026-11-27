@@ -1,5 +1,6 @@
 """
-Giai đoạn 2: tra bù dữ liệu thuế cho companies.csv (infodoanhnghiep trước, VietQR sau), lưu định kỳ.
+Giai đoạn 2: tra bù companies.csv, lưu định kỳ. Thiếu dữ liệu thuế: infodoanhnghiep trước, VietQR sau; thiếu SĐT:
+doanhnghiep.biz.
 Log mỗi công ty giữ dạng "[VietQR bù i/N]" để lệnh xem tiến độ cũ vẫn dùng được.
 """
 
@@ -19,6 +20,7 @@ from lead_crawler.sources.doanhnghiep_biz import DoanhNghiepBizSource
 from lead_crawler.sources.infodoanhnghiep import InfoDoanhNghiepSource
 from lead_crawler.sources.vietqr import API_HOST, VietQrSource
 from lead_crawler.storage import CSV_ENCODING, upgrade_csv_columns
+from lead_crawler.text_utils import find_city_in_text
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +103,7 @@ class BackfillProgress:
 
 def run_vietqr_backfill(settings: Settings) -> int:
     """
-    Tra bù companies.csv: công ty thiếu dữ liệu thuế hoặc số điện thoại trước, rồi tới công ty cần thêm số lao động.
+    Tra bù companies.csv cho công ty thiếu dữ liệu thuế hoặc số điện thoại (không tra lại chỉ để lấy số lao động).
     Trả về số công ty bổ sung được.
     """
     companies_path = settings.output_dir / "companies.csv"
@@ -118,25 +120,22 @@ def run_vietqr_backfill(settings: Settings) -> int:
 
     _, rows = read_csv_rows(companies_path)
     companies = [company_from_row(row) for row in rows]
+    renamed_count = rename_old_provinces(
+        companies,
+        settings.all_cities,
+    )
+    if renamed_count:
+        save_companies(companies_path, company_headers, companies)
+        logger.info("Giai đoạn 2: đổi tên tỉnh cũ sang tỉnh/TP mới (sau sáp nhập) cho %d công ty", renamed_count)
     use_infodoanhnghiep = settings.use_infodoanhnghiep
     use_doanhnghiep_biz = settings.use_doanhnghiep_biz
-
-    def is_urgent(company: Company) -> bool:
-        """
-        Thiếu dữ liệu thuế hoặc số điện thoại: tra trước.
-        """
-        return needs_tax_data(company) or (use_doanhnghiep_biz and needs_phone(company))
-
     pending_companies = [
         company
         for company in companies
-        if is_urgent(company) or (use_infodoanhnghiep and needs_infodoanhnghiep(company))
+        if needs_tax_data(company) or (use_doanhnghiep_biz and needs_phone(company))
     ]
-    # Giữ thứ tự trong file, công ty cần tra gấp lên trước.
-    pending_companies.sort(key=lambda company: 0 if is_urgent(company) else 1)
     missing_tax_data_count = sum(1 for company in pending_companies if needs_tax_data(company))
     missing_phone_count = sum(1 for company in pending_companies if use_doanhnghiep_biz and needs_phone(company))
-    urgent_count = sum(1 for company in pending_companies if is_urgent(company))
     if not pending_companies:
         logger.info("=== Giai đoạn 2: cả %d công ty đều không cần tra bù", len(companies))
 
@@ -174,15 +173,12 @@ def run_vietqr_backfill(settings: Settings) -> int:
         settings,
     )
     logger.info(
-        "=== Giai đoạn 2: tra bù cho %d / %d công ty (%d công ty tra trước: %d thiếu dữ liệu thuế, %d thiếu số "
-        "điện thoại; %d công ty lấy thêm số lao động / cơ quan thuế); nguồn: %s; ước tính ban đầu %s, tiến độ "
-        "theo tốc độ thực tế được in %d phút một lần",
+        "=== Giai đoạn 2: tra bù cho %d / %d công ty (%d thiếu dữ liệu thuế, %d thiếu số điện thoại); nguồn: %s; "
+        "ước tính ban đầu %s, tiến độ theo tốc độ thực tế được in %d phút một lần",
         len(pending_companies),
         len(companies),
-        urgent_count,
         missing_tax_data_count,
         missing_phone_count,
-        len(pending_companies) - urgent_count,
         ", ".join(
             source.name for source in (info_doanh_nghiep_source, vietqr_source, doanh_nghiep_biz_source) if source
         ),
@@ -208,7 +204,7 @@ def run_vietqr_backfill(settings: Settings) -> int:
 
             old_tax_code = company.tax_code
             old_sources = list(company.sources)
-            if info_usable and needs_infodoanhnghiep(company):
+            if info_usable and needs_tax_data(company):
                 info_doanh_nghiep_source.enrich(company)
 
             if vietqr_usable and company.tax_code == old_tax_code and needs_tax_data(company):
@@ -320,11 +316,27 @@ def needs_tax_data(company: Company) -> bool:
     )
 
 
-def needs_infodoanhnghiep(company: Company) -> bool:
+def rename_old_provinces(
+    companies: list[Company],
+    all_cities: dict[str, list[str]],
+) -> int:
     """
-    Công ty có MST mà chưa tra được infodoanhnghiep (số lao động, cơ quan thuế, số chi nhánh...).
+    Đổi tên tỉnh cũ (vd. Bình Dương) ở cột Khu vực quét và Tỉnh/TP sang tỉnh/TP mới chứa nó (TP. Hồ Chí Minh).
+    Trả về số công ty được đổi.
     """
-    return bool(company.tax_code) and InfoDoanhNghiepSource.name not in company.sources
+    renamed_count = 0
+    for company in companies:
+        is_renamed = False
+        for attribute_name in ("target_city", "city"):
+            old_name = getattr(company, attribute_name)
+            new_name = find_city_in_text(old_name, all_cities) if old_name else ""
+            if new_name and new_name != old_name:
+                setattr(company, attribute_name, new_name)
+                is_renamed = True
+
+        renamed_count += is_renamed
+
+    return renamed_count
 
 
 def needs_phone(company: Company) -> bool:
