@@ -3,11 +3,14 @@ infodoanhnghiep.com: tìm công ty theo tỉnh/thành (địa giới mới, côn
 (tìm kiếm -> trang chi tiết) lấy dữ liệu thuế, số lao động, ngành nghề. Không lấy số tài khoản ngân hàng.
 """
 
-import itertools
+import json
 import logging
+import os
 import re
+from collections import deque
 from collections.abc import Iterator
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from lead_crawler.html_soup import make_soup
@@ -29,6 +32,9 @@ MAX_INDUSTRIES = 100
 BRANCH_COUNT_PATTERN = re.compile(r"có\s+([\d.,]+)\s+chi nhánh", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"\d{2}/\d{2}/\d{4}")
 TAX_CODE_SOURCE_INFODOANHNGHIEP = "infodoanhnghiep.com"
+# Số trang danh sách lỗi liên tiếp thì dừng tỉnh đó; file lưu trang đã xong của từng tỉnh (trong thư mục output).
+MAX_FAILED_PAGES = 3
+PROGRESS_FILE_NAME = "tien_do_infodoanhnghiep.json"
 
 
 class InfoDoanhNghiepSource(EnrichmentSource):
@@ -68,47 +74,105 @@ class InfoDoanhNghiepSource(EnrichmentSource):
         cities: dict[str, list[str]],
         province_paths: dict[str, str],
         max_pages: Optional[int],
+        progress_path: Optional[Path] = None,
+        max_pages_by_city: Optional[dict[str, int]] = None,
     ) -> Iterator[Company]:
         """
-        Duyệt danh sách công ty của từng tỉnh/thành (/<tỉnh>/, /<tỉnh>/trang-N/), mỗi trang 20 công ty,
-        tối đa max_pages trang mỗi tỉnh (None = không giới hạn). Dừng tỉnh khi gặp trang trống hoặc toàn công ty đã gặp.
+        Duyệt danh sách công ty (/<tỉnh>/trang-N/, 20 công ty / trang) xen kẽ các tỉnh: trang 1 mọi tỉnh, rồi trang 2...
+        Tối đa max_pages_by_city[tỉnh] trang, tỉnh không có trong đó thì max_pages (None = không giới hạn).
+        progress_path lưu trang đã xong của từng tỉnh, chạy lại thì đọc tiếp từ trang sau đó
+        (danh sách mới lên trước nên không sót công ty cũ hơn).
         """
+        done_pages = read_done_pages(progress_path)
+        if done_pages:
+            logger.info("[%s] đọc tiếp sau trang đã xong (%s): %s", self.name, progress_path.name, done_pages)
+
+        city_page_iterators = deque()
+        city_max_pages: dict[str, Optional[int]] = {}
         for city_name in cities:
             province_path = province_paths.get(city_name)
             if not province_path:
                 logger.warning("%s: chưa có đường dẫn tỉnh cho %s (thêm vào config.ALL_CITIES)", self.name, city_name)
                 continue
 
-            seen_tax_codes: set[str] = set()
-            page_numbers = itertools.count(1) if max_pages is None else range(1, max_pages + 1)
-            for page_number in page_numbers:
-                page_url = f"{BASE_URL}/{province_path}/" + (f"trang-{page_number}/" if page_number > 1 else "")
-                page_html = self.http_client.get_text(
-                    page_url,
-                    wait_if_rate_limited=True,
+            city_max_pages[city_name] = (max_pages_by_city or {}).get(city_name, max_pages)
+            city_page_iterators.append(
+                self._iter_city_pages(
+                    city_name,
+                    province_path,
+                    done_pages.get(city_name, 0) + 1,
+                    city_max_pages[city_name],
                 )
-                if page_html is None:
-                    if self.is_blocked():
-                        return
+            )
 
-                    break
+        logger.info(
+            "[%s] số trang tối đa: %s",
+            self.name,
+            ", ".join(f"{city_name} {pages or 'không giới hạn'}" for city_name, pages in city_max_pages.items()),
+        )
 
-                listing_items = [
-                    listing_item
-                    for listing_item in parse_listing_page(page_html)
-                    if listing_item["tax_code"] not in seen_tax_codes
-                ]
-                if not listing_items:
-                    logger.info("[%s] %s trang %d không có công ty mới, dừng tỉnh này", self.name, city_name, page_number)
-                    break
+        while city_page_iterators and not self.is_blocked():
+            city_page_iterator = city_page_iterators.popleft()
+            city_page = next(city_page_iterator, None)
+            if city_page is None:
+                continue
 
-                seen_tax_codes.update(listing_item["tax_code"] for listing_item in listing_items)
-                logger.info("[%s] %s trang %d: %d công ty", self.name, city_name, page_number, len(listing_items))
-                for listing_item in listing_items:
-                    yield company_from_listing(
-                        listing_item,
-                        city_name,
-                    )
+            city_name, page_number, companies = city_page
+            yield from companies
+
+            # Tới đây thì mọi công ty của trang đã được xử lý xong.
+            done_pages[city_name] = page_number
+            save_done_pages(
+                progress_path,
+                done_pages,
+            )
+            city_page_iterators.append(city_page_iterator)
+
+    def _iter_city_pages(
+        self,
+        city_name: str,
+        province_path: str,
+        first_page: int,
+        max_pages: Optional[int],
+    ) -> Iterator[tuple[str, int, list[Company]]]:
+        """
+        Từng trang danh sách của một tỉnh: (tên tỉnh, số trang, công ty). Dừng khi gặp trang toàn công ty đã gặp
+        hoặc MAX_FAILED_PAGES trang lỗi liên tiếp.
+        """
+        seen_tax_codes: set[str] = set()
+        failed_count = 0
+        page_number = first_page
+        while max_pages is None or page_number <= max_pages:
+            page_url = f"{BASE_URL}/{province_path}/" + (f"trang-{page_number}/" if page_number > 1 else "")
+            page_html = self.http_client.get_text(
+                page_url,
+                wait_if_rate_limited=True,
+            )
+            if page_html is None:
+                failed_count += 1
+                if self.is_blocked() or failed_count >= MAX_FAILED_PAGES:
+                    logger.info("[%s] %s: không đọc được trang %d, dừng tỉnh này", self.name, city_name, page_number)
+
+                    return
+
+                page_number += 1
+                continue
+
+            failed_count = 0
+            listing_items = [
+                listing_item
+                for listing_item in parse_listing_page(page_html)
+                if listing_item["tax_code"] not in seen_tax_codes
+            ]
+            if not listing_items:
+                logger.info("[%s] %s trang %d không có công ty mới, dừng tỉnh này", self.name, city_name, page_number)
+
+                return
+
+            seen_tax_codes.update(listing_item["tax_code"] for listing_item in listing_items)
+            logger.info("[%s] %s trang %d: %d công ty", self.name, city_name, page_number, len(listing_items))
+            yield city_name, page_number, [company_from_listing(listing_item, city_name) for listing_item in listing_items]
+            page_number += 1
 
     def enrich(self, company: Company) -> list[ContactPerson]:
         """
@@ -225,6 +289,41 @@ class InfoPage:
         self.industries = industries
         self.main_industry = main_industry
         self.branch_count = branch_count
+
+
+def read_done_pages(progress_path: Optional[Path]) -> dict[str, int]:
+    """
+    Trang danh sách đã xong của từng tỉnh, {} nếu chưa có file hoặc file hỏng.
+    """
+    if progress_path is None or not progress_path.exists():
+        return {}
+
+    try:
+        done_pages = json.loads(progress_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        logger.warning("Không đọc được %s (%s), đọc lại từ trang 1", progress_path.name, error)
+
+        return {}
+
+    return {city_name: int(page_number) for city_name, page_number in done_pages.items() if str(page_number).isdigit()}
+
+
+def save_done_pages(
+    progress_path: Optional[Path],
+    done_pages: dict[str, int],
+) -> None:
+    """
+    Ghi trang đã xong của từng tỉnh (ghi file tạm rồi thay, không hỏng file khi bị dừng giữa chừng).
+    """
+    if progress_path is None:
+        return
+
+    temporary_path = progress_path.with_name(progress_path.name + ".tmp")
+    try:
+        temporary_path.write_text(json.dumps(done_pages, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(temporary_path, progress_path)
+    except OSError as error:
+        logger.warning("Không ghi được %s (%s)", progress_path.name, error)
 
 
 def parse_listing_page(page_html: str) -> list[dict[str, str]]:

@@ -6,17 +6,20 @@ Cấu hình mặc định: sửa ở đây rồi Run main.py. Ghi đè bằng th
 SELECTED_CITIES = ["Hà Nội", "TP. Hồ Chí Minh", "Cần Thơ", "Đà Nẵng", "Hải Phòng"]
 
 # Tỉnh/TP theo địa giới mới (sau sáp nhập 7/2025). Thêm tỉnh: tên -> đường dẫn trên infodoanhnghiep.com
-# (vd. "Ha-Noi" trong https://infodoanhnghiep.com/Ha-Noi/) và từ khóa không dấu của các tỉnh cũ gộp vào
-# (để nhận ra tỉnh trong địa chỉ cũ và tra tratencongty, vẫn chia theo 63 tỉnh cũ).
+# (vd. "Ha-Noi" trong https://infodoanhnghiep.com/Ha-Noi/), số trang danh sách tối đa (20 công ty / trang; bỏ trống =
+# DIRECTORY_MAX_PAGES_PER_CITY) và từ khóa không dấu của các tỉnh cũ gộp vào (để nhận ra tỉnh trong địa chỉ cũ và
+# tra tratencongty, vẫn chia theo 63 tỉnh cũ). Hiện tại 5.000 trang ~ 100.000 công ty, chia theo quy mô từng TP trên site
+# (HCM ~646 nghìn, Hà Nội ~340 nghìn, Hải Phòng ~75 nghìn, Đà Nẵng ~69 nghìn, Cần Thơ ~38 nghìn), TP nhỏ được nâng lên.
 ALL_CITIES = {
-    "Hà Nội": {"infodoanhnghiep": "Ha-Noi", "keys": ["ha-noi"]},
+    "Hà Nội": {"infodoanhnghiep": "Ha-Noi", "pages": 1500, "keys": ["ha-noi"]},
     "TP. Hồ Chí Minh": {
         "infodoanhnghiep": "TP-Ho-Chi-Minh",
+        "pages": 2000,
         "keys": ["ho-chi-minh", "tphcm", "tp-hcm", "binh-duong", "ba-ria-vung-tau", "brvt"],
     },
-    "Cần Thơ": {"infodoanhnghiep": "Can-Tho", "keys": ["can-tho", "soc-trang", "hau-giang"]},
-    "Đà Nẵng": {"infodoanhnghiep": "Da-Nang", "keys": ["da-nang", "quang-nam"]},
-    "Hải Phòng": {"infodoanhnghiep": "Hai-Phong", "keys": ["hai-phong", "hai-duong"]},
+    "Cần Thơ": {"infodoanhnghiep": "Can-Tho", "pages": 400, "keys": ["can-tho", "soc-trang", "hau-giang"]},
+    "Đà Nẵng": {"infodoanhnghiep": "Da-Nang", "pages": 550, "keys": ["da-nang", "quang-nam"]},
+    "Hải Phòng": {"infodoanhnghiep": "Hai-Phong", "pages": 550, "keys": ["hai-phong", "hai-duong"]},
 }
 
 # ============================================================ TÌM CÔNG TY
@@ -27,7 +30,9 @@ INPUT_FILE = ""
 # Nguồn tự tìm công ty, chạy theo thứ tự: "infodoanhnghiep" (có MST, địa giới mới), "tratencongty" (không có MST).
 DISCOVERY_SOURCES = ["infodoanhnghiep"]
 
-# Số trang tối đa mỗi tỉnh (None = không giới hạn). infodoanhnghiep: 20 công ty / trang; tratencongty: 50 công ty.
+# Số trang tối đa mỗi tỉnh khi ALL_CITIES không ghi "pages" (None = không giới hạn); --directory-pages N ghi đè cho mọi
+# tỉnh. infodoanhnghiep quét xen kẽ các tỉnh, chạy lại thì đọc tiếp (output/tien_do_infodoanhnghiep.json).
+# tratencongty: 50 công ty / trang.
 DIRECTORY_MAX_PAGES_PER_CITY = None
 REGISTRY_MAX_PAGES_PER_CITY = None
 
@@ -36,8 +41,9 @@ KEYWORDS: list[str] = []
 
 # ============================================================ NGUỒN BỔ SUNG
 
-# VietQR (Cục Thuế): tên pháp lý, trạng thái. Giới hạn lượt theo IP (~1 lượt / phút từ 27/11/2026).
-USE_VIETQR_TAX_LOOKUP = True
+# VietQR (Cục Thuế): tên pháp lý, trạng thái. Mặc định tắt (bật bằng --vietqr): infodoanhnghiep đã có trạng thái
+# người nộp thuế đối chiếu với Cơ quan thuế. VietQR giới hạn ~1 lượt / phút mỗi IP, API miễn phí dừng 31/12/2026.
+USE_VIETQR_TAX_LOOKUP = False
 # Giai đoạn 1 không chờ VietQR (hết lượt thì bỏ qua); giai đoạn 2 tra bù sau khi cào (--vietqr-backfill).
 VIETQR_WAIT_IF_RATE_LIMITED = False
 VIETQR_BACKFILL_AFTER_CRAWL = True

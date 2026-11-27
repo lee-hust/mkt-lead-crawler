@@ -1,6 +1,7 @@
 # Dữ liệu cào về (có tên, SĐT, email) — không đưa lên git
 output/
 output_server/
+output_cu/
 *.log
 *.tar.gz
 *.tgz

@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
         help="Nguồn tự tìm công ty; để trống sau --sources = không tự tìm (chỉ dùng --input)",
     )
     argument_parser.add_argument("--keywords", nargs="+", help="Từ khóa ngành nghề để lọc công ty tự tìm thấy")
-    argument_parser.add_argument("--directory-pages", type=int, help="Số trang danh sách infodoanhnghiep tối đa mỗi tỉnh")
+    argument_parser.add_argument("--directory-pages", type=int, help="Số trang danh sách infodoanhnghiep tối đa, như nhau cho mọi tỉnh (thay số trang riêng trong config.ALL_CITIES)")
     argument_parser.add_argument("--registry-pages", type=int, help="Số trang tratencongty tối đa mỗi tỉnh")
     argument_parser.add_argument("--max-companies", type=int, help="Dừng sau N doanh nghiệp")
     argument_parser.add_argument("--vietqr", action="store_true", help="Bật tra MST qua VietQR (trạng thái hoạt động, tên pháp lý)")
@@ -80,6 +80,12 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
     cities = {city: config.ALL_CITIES[city]["keys"] for city in selected_cities}
     infodoanhnghiep_paths = {city: config.ALL_CITIES[city]["infodoanhnghiep"] for city in selected_cities}
     all_cities = {city: city_config["keys"] for city, city_config in config.ALL_CITIES.items()}
+    # --directory-pages N áp dụng cho mọi tỉnh, thay số trang riêng trong config.ALL_CITIES.
+    directory_pages_by_city = {}
+    if not arguments.directory_pages:
+        directory_pages_by_city = {
+            city: config.ALL_CITIES[city]["pages"] for city in selected_cities if config.ALL_CITIES[city].get("pages")
+        }
 
     output_dir = Path(arguments.output or config.OUTPUT_DIR)
     if not output_dir.is_absolute():
@@ -99,6 +105,7 @@ def build_settings(arguments: argparse.Namespace) -> Settings:
         discovery_sources=list(discovery_sources),
         input_file=input_file,
         directory_max_pages_per_city=arguments.directory_pages or config.DIRECTORY_MAX_PAGES_PER_CITY,
+        directory_pages_by_city=directory_pages_by_city,
         registry_max_pages_per_city=arguments.registry_pages or config.REGISTRY_MAX_PAGES_PER_CITY,
         keywords=arguments.keywords or config.KEYWORDS,
         max_companies=arguments.max_companies or config.MAX_COMPANIES,

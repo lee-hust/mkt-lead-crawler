@@ -15,6 +15,7 @@ from lead_crawler.models import Company, ContactPerson
 from lead_crawler.sources.base import EnrichmentSource
 from lead_crawler.sources.company_website import CompanyWebsiteSource
 from lead_crawler.sources.doanhnghiep_biz import DoanhNghiepBizSource
+from lead_crawler.sources.infodoanhnghiep import PROGRESS_FILE_NAME as INFODOANHNGHIEP_PROGRESS_FILE_NAME
 from lead_crawler.sources.infodoanhnghiep import InfoDoanhNghiepSource
 from lead_crawler.sources.input_file import read_input_companies
 from lead_crawler.sources.tratencongty import TraTenCongTySource
@@ -44,10 +45,12 @@ class Settings:
     discovery_sources: list[str] = field(default_factory=lambda: list(ALL_DISCOVERY_SOURCES))
     input_file: Optional[Path] = None
     directory_max_pages_per_city: Optional[int] = None
+    # Số trang infodoanhnghiep riêng từng tỉnh (config.ALL_CITIES "pages"); tỉnh không có thì dùng giá trị trên.
+    directory_pages_by_city: dict[str, int] = field(default_factory=dict)
     registry_max_pages_per_city: Optional[int] = None
     keywords: list[str] = field(default_factory=list)
     max_companies: Optional[int] = None
-    use_vietqr_tax_lookup: bool = True
+    use_vietqr_tax_lookup: bool = False
     vietqr_wait_if_rate_limited: bool = False
     # Tra VietQR xoay vòng qua proxy miễn phí (lấy bằng swiftshadow), bên cạnh IP máy chạy tool.
     vietqr_free_proxies: bool = False
@@ -176,11 +179,13 @@ def iter_discovered_companies(
         )
 
     if DISCOVERY_INFODOANHNGHIEP in settings.discovery_sources:
-        logger.info("=== Nguồn đầu vào: infodoanhnghiep.com (danh sách theo tỉnh, địa giới mới)")
+        logger.info("=== Nguồn đầu vào: infodoanhnghiep.com (danh sách theo tỉnh, địa giới mới, xen kẽ từng trang)")
         yield from info_doanh_nghiep_source.iter_companies(
             settings.cities,
             settings.infodoanhnghiep_paths,
             settings.directory_max_pages_per_city,
+            settings.output_dir / INFODOANHNGHIEP_PROGRESS_FILE_NAME,
+            settings.directory_pages_by_city,
         )
 
     if DISCOVERY_TRATENCONGTY in settings.discovery_sources:
